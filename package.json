@@ -1,0 +1,16 @@
+{
+  "name": "arabic-school-web",
+  "version": "1.0.0",
+  "description": "Parramatta Arabic School staff login portal with QR and Microsoft authentication.",
+  "private": true,
+  "scripts": {
+    "dev": "npx -y serve .",
+    "build": "echo 'No build step needed for CDN-only setup'"
+  },
+  "author": "Parramatta Arabic School",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.2",
+    "@azure/msal-browser": "^2.38.3"
+  }
+}
