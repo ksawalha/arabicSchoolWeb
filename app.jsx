@@ -773,6 +773,7 @@ const navItems = [
     { id: '/home', label: 'Home', icon: 'home' },
     { id: '/students', label: 'Students', icon: 'users' },
     { id: '/teachers', label: 'Teachers', icon: 'user' },
+    { id: '/classrooms', label: 'Classrooms', icon: 'grid' },
     { id: '/feed', label: 'Homework & Announcements', icon: 'inbox' },
     { id: '/stories', label: 'Stories', icon: 'book-open' },
     { id: '/calendar', label: 'Calendar', icon: 'calendar' },
@@ -837,7 +838,7 @@ const Sidebar = ({ currentRoute, onNavigate, notifCount, sidebarOpen, onClose, c
                     ))}
 
                     <div className="sidebar-divider" />
-                    <div className="sidebar-section-label">Account</div>
+                    <div className="sidebar-section-label">Preferences</div>
                     {canSeeSettings && (
                         <div className={`sidebar-item ${currentRoute === '/settings' ? 'active' : ''}`}
                             onClick={() => { onNavigate('/settings'); onClose(); }}>
@@ -3661,6 +3662,7 @@ const PdfViewerModal = ({ url, title, onClose }) => {
 const StudentProfilePage = ({ student, onBack, onSaved, onSiblingClick }) => {
     const isCreate = !student;
     const [loading, setLoading] = useState(false);
+    const [fetchingDetails, setFetchingDetails] = useState(!isCreate && !!(student?.Id || student?.id));
     const [pdfUrl, setPdfUrl] = useState(null);
     const [pdfTitle, setPdfTitle] = useState('');
     const [activeTab, setActiveTab] = useState(student?.tab || 'Student Details');
@@ -3737,6 +3739,7 @@ const StudentProfilePage = ({ student, onBack, onSaved, onSiblingClick }) => {
         if (!isCreate) {
             const sid = student?.Id || student?.id;
             if (sid) {
+                setFetchingDetails(true);
                 api.get(`/api/students/${sid}?details=true`).then(res => {
                     const raw = res.data;
                     let full = raw?.data || raw?.Data || raw || {};
@@ -3817,7 +3820,10 @@ const StudentProfilePage = ({ student, onBack, onSaved, onSiblingClick }) => {
                         CustomDiscountReason: full.CustomDiscountReason || full.customDiscountReason || full.customReason || full.CustomReason || full.customreason || det.CustomDiscountReason || det.customDiscountReason || det.customReason || det.CustomReason || det.customreason || prev.CustomDiscountReason,
                         DateDiscontinued: full.DateDiscontinued || full.datediscontinued || full.DiscontinueDate || full.discontinueDate || det.DateDiscontinued || det.datediscontinued || det.DiscontinueDate || det.discontinueDate || prev.DateDiscontinued,
                     }));
-                }).catch(e => console.error("Details fetch failed:", e));
+                }).catch(e => console.error("Details fetch failed:", e))
+                    .finally(() => setFetchingDetails(false));
+            } else {
+                setFetchingDetails(false);
             }
         }
     }, [isCreate, student]);
@@ -3989,6 +3995,30 @@ const StudentProfilePage = ({ student, onBack, onSaved, onSiblingClick }) => {
     );
     const assignedClassroom = classrooms.find(c => (c.Id || c.id) == formData.ClassroomId);
     const classroomName = assignedClassroom ? (assignedClassroom.name || assignedClassroom.Name) : 'No Classroom';
+
+    if (fetchingDetails) {
+        return (
+            <div className="card" style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+                <div className="card-header" style={{ padding: '24px 32px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 24, alignItems: 'center' }}>
+                    <div className="skeleton" style={{ width: 64, height: 64, borderRadius: '50%', flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                        <div className="skeleton skeleton-text" style={{ width: '40%', height: 32, marginBottom: 12, borderRadius: 8 }} />
+                        <div className="skeleton skeleton-text" style={{ width: '20%', height: 20, borderRadius: 8 }} />
+                    </div>
+                </div>
+                <div className="card-body" style={{ padding: 32 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            <div key={i}>
+                                <div className="skeleton skeleton-text" style={{ width: '30%', height: 16, marginBottom: 8, borderRadius: 6 }} />
+                                <div className="skeleton skeleton-text" style={{ width: '100%', height: 42, borderRadius: 8 }} />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="card" style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
@@ -5062,6 +5092,7 @@ const UserEditModal = ({ user, onClose, onSaved }) => {
     const currentUser = Auth.getUser();
     const isAdmin = String(currentUser?.role || '').trim().toLowerCase() === 'admin';
 
+    const [originalState, setOriginalState] = useState(null);
     const [f, setF] = useState({});
     const [currentPhoto, setCurrentPhoto] = useState('');
     const [canUpdate, setCanUpdate] = useState(isCreate);
@@ -5102,10 +5133,35 @@ const UserEditModal = ({ user, onClose, onSaved }) => {
             if (typeof perms === 'string') { try { perms = JSON.parse(perms); } catch { perms = null; } }
             if (perms && typeof perms === 'object') {
                 const ids = new Set();
-                if (Array.isArray(perms)) perms.forEach(v => ids.add(String(v)));
-                else Object.values(perms).forEach(v => ids.add(String(v)));
+                if (Array.isArray(perms)) {
+                    perms.forEach(v => {
+                        const n = parseInt(v, 10);
+                        if (!isNaN(n)) ids.add(String(n));
+                    });
+                } else {
+                    Object.values(perms).forEach(v => {
+                        const n = parseInt(v, 10);
+                        if (!isNaN(n)) ids.add(String(n));
+                    });
+                    Object.keys(perms).forEach(k => {
+                        const n = parseInt(k, 10);
+                        if (!isNaN(n)) ids.add(String(n));
+                    });
+                }
                 setSelectedPerms(ids);
             }
+
+            // Re-create the IDs locally to store them safely for comparison
+            const finalIds = new Set();
+            if (perms && typeof perms === 'object') {
+                if (Array.isArray(perms)) {
+                    perms.forEach(v => { const n = parseInt(v, 10); if (!isNaN(n)) finalIds.add(String(n)); });
+                } else {
+                    Object.values(perms).forEach(v => { const n = parseInt(v, 10); if (!isNaN(n)) finalIds.add(String(n)); });
+                    Object.keys(perms).forEach(k => { const n = parseInt(k, 10); if (!isNaN(n)) finalIds.add(String(n)); });
+                }
+            }
+            setOriginalState({ Role: u.Role || '', perms: finalIds });
             loadPermOptions();
         }).catch(e => setLoadError(e.message)).finally(() => setLoading(false));
     }, []);
@@ -5209,25 +5265,49 @@ const UserEditModal = ({ user, onClose, onSaved }) => {
         const sch = (f.SchoolEmail || '').trim();
         if (isCreate && (!fn || !ln || !role || !sch)) return alert('First Name, Last Name, Role and School Email are required');
         if (!isCreate && (!fn || !ln)) return alert('First Name and Last Name are required');
+
+        let requiresConfirmation = false;
+        if (!isCreate && originalState) {
+            if (f.Role !== originalState.Role) {
+                requiresConfirmation = true;
+            } else if (selectedPerms.size !== originalState.perms.size) {
+                requiresConfirmation = true;
+            } else {
+                for (let perm of selectedPerms) {
+                    if (!originalState.perms.has(perm)) {
+                        requiresConfirmation = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (requiresConfirmation) {
+            const ok = window.confirm('Changing Role or Permissions will require the user to sign in again to use the app. Do you want to proceed?');
+            if (!ok) return;
+        }
+
         setSaving(true);
         try {
             const payload = { ...f };
-            if (selectedPerms.size > 0) {
-                const permObj = {};
-                permOptions.forEach(opt => {
-                    if (selectedPerms.has(String(opt.value))) permObj[opt.label] = Number(opt.value);
-                });
-                payload.Permissions = permObj;
-            }
+            const permObj = {};
+            permOptions.forEach(opt => {
+                if (selectedPerms.has(String(opt.value))) permObj[opt.label] = Number(opt.value);
+            });
+            payload.Permissions = JSON.stringify(permObj);
+            payload.permissionsCodes = Array.from(selectedPerms).map(String);
+            delete payload.permissions;
             delete payload.Id; delete payload.id;
             if (payload.FirstLanguage === 'Other' && payload.FirstLanguageOther) {
                 payload.FirstLanguage = payload.FirstLanguageOther;
             }
             delete payload.FirstLanguageOther;
+
+            const headers = { 'x-invalidate-sessions': 'true' };
             if (isCreate) {
-                await api.post('/api/users', payload);
+                await api.post('/api/users', payload, { headers });
             } else {
-                await api.patch(`/api/users/${user.Id || user.id}`, payload);
+                await api.patch(`/api/users/${user.Id || user.id}`, payload, { headers });
             }
             onSaved();
             onClose();
@@ -5631,6 +5711,10 @@ const TeachersPage = () => {
     const [attendanceMode, setAttendanceMode] = useState(false);
     const [attendanceIds, setAttendanceIds] = useState(new Set());
     const [submittingAtt, setSubmittingAtt] = useState(false);
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportFromDate, setExportFromDate] = useState(() => DateTime.now().startOf('month').toFormat('yyyy-MM-dd'));
+    const [exportToDate, setExportToDate] = useState(() => DateTime.now().endOf('month').toFormat('yyyy-MM-dd'));
+    const [exportingAtt, setExportingAtt] = useState(false);
 
     const [showFiltersModal, setShowFiltersModal] = useState(false);
     const [sortRules, setSortRules] = useState([{ column: 'firstname', desc: false }]);
@@ -5742,6 +5826,26 @@ const TeachersPage = () => {
         }
     };
 
+    const exportAttendance = async () => {
+        setExportingAtt(true);
+        try {
+            const res = await api.get('/api/teacherAttendance/export', {
+                params: { from: exportFromDate, to: exportToDate },
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `teacher_attendance_export_${DateTime.now().toFormat('yyyyMMdd')}.xlsx`;
+            a.click();
+            setShowExportModal(false);
+        } catch (e) {
+            alert('Export failed: ' + e.message);
+        } finally {
+            setExportingAtt(false);
+        }
+    };
+
     const toggleAttId = id => setAttendanceIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
     const submitAttendance = async () => {
         if (submittingAtt) return;
@@ -5807,6 +5911,9 @@ const TeachersPage = () => {
                             <div className="dropdown-menu shadow" style={{ position: 'absolute', right: 0, top: '100%', marginTop: 8, zIndex: 100, minWidth: 200 }}>
                                 <div className="dropdown-item" onClick={exportExcel}>
                                     <Icon name="file-text" size={14} style={{ marginRight: 8 }} /> Export as Excel
+                                </div>
+                                <div className="dropdown-item" onClick={() => { setShowActionsMenu(false); setShowExportModal(true); }}>
+                                    <Icon name="download" size={14} style={{ marginRight: 8 }} /> Export Attendance
                                 </div>
                                 <div className="dropdown-item" onClick={() => { setShowActionsMenu(false); setAttendanceMode(true); setAttendanceIds(new Set()); }}>
                                     <Icon name="check-circle" size={14} style={{ marginRight: 8 }} /> Take Attendance
@@ -5897,6 +6004,32 @@ const TeachersPage = () => {
                 </GlobalCanvasPortal>
             )}
             {attendanceMode && <div style={{ height: 80 }}></div>}
+
+            {showExportModal && (
+                <GlobalCanvasPortal>
+                    <div className="modal-overlay" onClick={() => setShowExportModal(false)}>
+                        <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, width: '100%' }}>
+                            <div className="modal-title">Export Teacher Attendance</div>
+                            <div className="modal-body">
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>From Date</label>
+                                    <input type="date" className="form-input" value={exportFromDate} onChange={e => setExportFromDate(e.target.value)} />
+                                </div>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>To Date</label>
+                                    <input type="date" className="form-input" value={exportToDate} onChange={e => setExportToDate(e.target.value)} />
+                                </div>
+                            </div>
+                            <div className="modal-actions">
+                                <button className="btn btn-secondary" disabled={exportingAtt} onClick={() => setShowExportModal(false)}>Cancel</button>
+                                <button className="btn btn-primary" disabled={exportingAtt} onClick={exportAttendance}>
+                                    {exportingAtt ? 'Exporting...' : 'Export'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </GlobalCanvasPortal>
+            )}
 
             {showFiltersModal && (
                 <GlobalCanvasPortal>

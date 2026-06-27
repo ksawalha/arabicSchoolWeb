@@ -669,6 +669,7 @@ const navItems = [
   { id: "/home", label: "Home", icon: "home" },
   { id: "/students", label: "Students", icon: "users" },
   { id: "/teachers", label: "Teachers", icon: "user" },
+  { id: "/classrooms", label: "Classrooms", icon: "grid" },
   { id: "/feed", label: "Homework & Announcements", icon: "inbox" },
   { id: "/stories", label: "Stories", icon: "book-open" },
   { id: "/calendar", label: "Calendar", icon: "calendar" },
@@ -718,7 +719,7 @@ const Sidebar = ({ currentRoute, onNavigate, notifCount, sidebarOpen, onClose, c
     /* @__PURE__ */ React.createElement(Icon, { name: item.icon, size: 20 }),
     /* @__PURE__ */ React.createElement("span", null, item.label),
     item.id === "/notifications" && notifCount > 0 && /* @__PURE__ */ React.createElement("span", { className: "nav-badge" }, notifCount > 99 ? "99+" : notifCount)
-  )), /* @__PURE__ */ React.createElement("div", { className: "sidebar-divider" }), /* @__PURE__ */ React.createElement("div", { className: "sidebar-section-label" }, "Account"), canSeeSettings && /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", { className: "sidebar-divider" }), /* @__PURE__ */ React.createElement("div", { className: "sidebar-section-label" }, "Preferences"), canSeeSettings && /* @__PURE__ */ React.createElement(
     "div",
     {
       className: `sidebar-item ${currentRoute === "/settings" ? "active" : ""}`,
@@ -2291,6 +2292,7 @@ const PdfViewerModal = ({ url, title, onClose }) => {
 const StudentProfilePage = ({ student, onBack, onSaved, onSiblingClick }) => {
   const isCreate = !student;
   const [loading, setLoading] = useState(false);
+  const [fetchingDetails, setFetchingDetails] = useState(!isCreate && !!(student?.Id || student?.id));
   const [pdfUrl, setPdfUrl] = useState(null);
   const [pdfTitle, setPdfTitle] = useState("");
   const [activeTab, setActiveTab] = useState(student?.tab || "Student Details");
@@ -2356,6 +2358,7 @@ const StudentProfilePage = ({ student, onBack, onSaved, onSiblingClick }) => {
     if (!isCreate) {
       const sid = student?.Id || student?.id;
       if (sid) {
+        setFetchingDetails(true);
         api.get(`/api/students/${sid}?details=true`).then((res) => {
           const raw = res.data;
           let full = raw?.data || raw?.Data || raw || {};
@@ -2424,7 +2427,9 @@ const StudentProfilePage = ({ student, onBack, onSaved, onSiblingClick }) => {
             CustomDiscountReason: full.CustomDiscountReason || full.customDiscountReason || full.customReason || full.CustomReason || full.customreason || det.CustomDiscountReason || det.customDiscountReason || det.customReason || det.CustomReason || det.customreason || prev.CustomDiscountReason,
             DateDiscontinued: full.DateDiscontinued || full.datediscontinued || full.DiscontinueDate || full.discontinueDate || det.DateDiscontinued || det.datediscontinued || det.DiscontinueDate || det.discontinueDate || prev.DateDiscontinued
           }));
-        }).catch((e) => console.error("Details fetch failed:", e));
+        }).catch((e) => console.error("Details fetch failed:", e)).finally(() => setFetchingDetails(false));
+      } else {
+        setFetchingDetails(false);
       }
     }
   }, [isCreate, student]);
@@ -2575,6 +2580,9 @@ const StudentProfilePage = ({ student, onBack, onSaved, onSiblingClick }) => {
   } }, opt)));
   const assignedClassroom = classrooms.find((c) => (c.Id || c.id) == formData.ClassroomId);
   const classroomName = assignedClassroom ? assignedClassroom.name || assignedClassroom.Name : "No Classroom";
+  if (fetchingDetails) {
+    return /* @__PURE__ */ React.createElement("div", { className: "card", style: { minHeight: "80vh", display: "flex", flexDirection: "column" } }, /* @__PURE__ */ React.createElement("div", { className: "card-header", style: { padding: "24px 32px", borderBottom: "1px solid var(--color-border)", display: "flex", gap: 24, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 64, height: 64, borderRadius: "50%", flexShrink: 0 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton skeleton-text", style: { width: "40%", height: 32, marginBottom: 12, borderRadius: 8 } }), /* @__PURE__ */ React.createElement("div", { className: "skeleton skeleton-text", style: { width: "20%", height: 20, borderRadius: 8 } }))), /* @__PURE__ */ React.createElement("div", { className: "card-body", style: { padding: 32 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 } }, Array.from({ length: 6 }).map((_, i) => /* @__PURE__ */ React.createElement("div", { key: i }, /* @__PURE__ */ React.createElement("div", { className: "skeleton skeleton-text", style: { width: "30%", height: 16, marginBottom: 8, borderRadius: 6 } }), /* @__PURE__ */ React.createElement("div", { className: "skeleton skeleton-text", style: { width: "100%", height: 42, borderRadius: 8 } }))))));
+  }
   return /* @__PURE__ */ React.createElement("div", { className: "card", style: { minHeight: "80vh", display: "flex", flexDirection: "column" } }, !hideProfile && /* @__PURE__ */ React.createElement("div", { className: "card-header", style: { padding: "24px 32px 0 32px", borderBottom: "1px solid var(--color-border)", display: "block" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 24, alignItems: "center", paddingBottom: 24, width: "100%" } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", style: { padding: 8, borderRadius: "50%" }, onClick: onBack }, /* @__PURE__ */ React.createElement(Icon, { name: "arrow-left", size: 20 })), isCreate ? /* @__PURE__ */ React.createElement("div", { style: { width: 64, height: 64, borderRadius: "50%", background: "var(--color-bg-alt)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem", fontWeight: "bold", color: "var(--color-text-muted)" } }, initials) : /* @__PURE__ */ React.createElement("div", { style: { position: "relative", cursor: "pointer" }, onClick: () => setPhotoModalOpen(true), title: getPhotoTooltip() }, /* @__PURE__ */ React.createElement("img", { src: photoUrl || "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=", alt: "", style: { width: 64, height: 64, borderRadius: "50%", objectFit: "cover", background: "var(--color-bg-alt)", display: photoUrl ? "block" : "none" }, onError: (e) => {
     e.target.style.display = "none";
     e.target.nextSibling.style.display = "flex";
@@ -3027,6 +3035,7 @@ const UserEditModal = ({ user, onClose, onSaved }) => {
   const [showPhotoMenu, setShowPhotoMenu] = useState(false);
   const currentUser = Auth.getUser();
   const isAdmin = String(currentUser?.role || "").trim().toLowerCase() === "admin";
+  const [originalState, setOriginalState] = useState(null);
   const [f, setF] = useState({});
   const [currentPhoto, setCurrentPhoto] = useState("");
   const [canUpdate, setCanUpdate] = useState(isCreate);
@@ -3067,10 +3076,42 @@ const UserEditModal = ({ user, onClose, onSaved }) => {
       }
       if (perms && typeof perms === "object") {
         const ids = /* @__PURE__ */ new Set();
-        if (Array.isArray(perms)) perms.forEach((v2) => ids.add(String(v2)));
-        else Object.values(perms).forEach((v2) => ids.add(String(v2)));
+        if (Array.isArray(perms)) {
+          perms.forEach((v2) => {
+            const n = parseInt(v2, 10);
+            if (!isNaN(n)) ids.add(String(n));
+          });
+        } else {
+          Object.values(perms).forEach((v2) => {
+            const n = parseInt(v2, 10);
+            if (!isNaN(n)) ids.add(String(n));
+          });
+          Object.keys(perms).forEach((k) => {
+            const n = parseInt(k, 10);
+            if (!isNaN(n)) ids.add(String(n));
+          });
+        }
         setSelectedPerms(ids);
       }
+      const finalIds = /* @__PURE__ */ new Set();
+      if (perms && typeof perms === "object") {
+        if (Array.isArray(perms)) {
+          perms.forEach((v2) => {
+            const n = parseInt(v2, 10);
+            if (!isNaN(n)) finalIds.add(String(n));
+          });
+        } else {
+          Object.values(perms).forEach((v2) => {
+            const n = parseInt(v2, 10);
+            if (!isNaN(n)) finalIds.add(String(n));
+          });
+          Object.keys(perms).forEach((k) => {
+            const n = parseInt(k, 10);
+            if (!isNaN(n)) finalIds.add(String(n));
+          });
+        }
+      }
+      setOriginalState({ Role: u.Role || "", perms: finalIds });
       loadPermOptions();
     }).catch((e) => setLoadError(e.message)).finally(() => setLoading(false));
   }, []);
@@ -3186,26 +3227,46 @@ const UserEditModal = ({ user, onClose, onSaved }) => {
     const sch = (f.SchoolEmail || "").trim();
     if (isCreate && (!fn || !ln || !role || !sch)) return alert("First Name, Last Name, Role and School Email are required");
     if (!isCreate && (!fn || !ln)) return alert("First Name and Last Name are required");
+    let requiresConfirmation = false;
+    if (!isCreate && originalState) {
+      if (f.Role !== originalState.Role) {
+        requiresConfirmation = true;
+      } else if (selectedPerms.size !== originalState.perms.size) {
+        requiresConfirmation = true;
+      } else {
+        for (let perm of selectedPerms) {
+          if (!originalState.perms.has(perm)) {
+            requiresConfirmation = true;
+            break;
+          }
+        }
+      }
+    }
+    if (requiresConfirmation) {
+      const ok = window.confirm("Changing Role or Permissions will require the user to sign in again to use the app. Do you want to proceed?");
+      if (!ok) return;
+    }
     setSaving(true);
     try {
       const payload = { ...f };
-      if (selectedPerms.size > 0) {
-        const permObj = {};
-        permOptions.forEach((opt) => {
-          if (selectedPerms.has(String(opt.value))) permObj[opt.label] = Number(opt.value);
-        });
-        payload.Permissions = permObj;
-      }
+      const permObj = {};
+      permOptions.forEach((opt) => {
+        if (selectedPerms.has(String(opt.value))) permObj[opt.label] = Number(opt.value);
+      });
+      payload.Permissions = JSON.stringify(permObj);
+      payload.permissionsCodes = Array.from(selectedPerms).map(String);
+      delete payload.permissions;
       delete payload.Id;
       delete payload.id;
       if (payload.FirstLanguage === "Other" && payload.FirstLanguageOther) {
         payload.FirstLanguage = payload.FirstLanguageOther;
       }
       delete payload.FirstLanguageOther;
+      const headers = { "x-invalidate-sessions": "true" };
       if (isCreate) {
-        await api.post("/api/users", payload);
+        await api.post("/api/users", payload, { headers });
       } else {
-        await api.patch(`/api/users/${user.Id || user.id}`, payload);
+        await api.patch(`/api/users/${user.Id || user.id}`, payload, { headers });
       }
       onSaved();
       onClose();
