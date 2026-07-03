@@ -291,12 +291,12 @@ const calculateAge = (birthDate) => {
   return age;
 };
 const toAbsoluteAssetUrl = (rawUrl) => {
-  if (!rawUrl) return "";
+  if (!rawUrl || typeof rawUrl !== "string") return "";
   if (/^https?:\/\//i.test(rawUrl) || rawUrl.startsWith("data:")) return rawUrl;
   return `${API_BASE}${rawUrl.startsWith("/") ? "" : "/"}${rawUrl}`;
 };
 const toAzureVideoUrl = (rawUrl) => {
-  if (!rawUrl) return "";
+  if (!rawUrl || typeof rawUrl !== "string") return "";
   if (rawUrl.startsWith("blob:") || rawUrl.startsWith("data:")) return rawUrl;
   const strippedPart = rawUrl.split("/").pop();
   return `https://arabicschool.azureedge.net/${strippedPart}`;
@@ -673,14 +673,72 @@ const navItems = [
   { id: "/feed", label: "Homework & Announcements", icon: "inbox" },
   { id: "/stories", label: "Stories", icon: "book-open" },
   { id: "/calendar", label: "Calendar", icon: "calendar" },
-  { id: "/payments", label: "Payments Log", icon: "dollar-sign" }
+  { id: "/email-campaigns", label: "Email Campaigns", icon: "mail" },
+  {
+    id: "invoices-group",
+    label: "Invoices",
+    icon: "file-text",
+    subItems: [
+      { id: "/payments", label: "Payments Log", icon: "dollar-sign" },
+      { id: "/mass-invoices", label: "Issue Invoices", icon: "file-plus" },
+      { id: "/send-reminders", label: "Send Reminders", icon: "bell" }
+    ]
+  }
 ];
+const SidebarGroup = ({ item, currentRoute, onNavigate, onClose }) => {
+  const [hover, setHover] = useState(false);
+  const [rect, setRect] = useState(null);
+  const ref = useRef(null);
+  const timeoutRef = useRef(null);
+  const handleMouseEnter = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (ref.current) setRect(ref.current.getBoundingClientRect());
+    setHover(true);
+  };
+  const handleMouseLeave = () => {
+    timeoutRef.current = setTimeout(() => {
+      setHover(false);
+    }, 150);
+  };
+  return /* @__PURE__ */ React.createElement("div", { ref, className: "sidebar-item-group", onMouseEnter: handleMouseEnter, onMouseLeave: handleMouseLeave }, /* @__PURE__ */ React.createElement("div", { className: `sidebar-item ${item.subItems.some((sub) => currentRoute === sub.id) ? "active" : ""}` }, /* @__PURE__ */ React.createElement(Icon, { name: item.icon, size: 20 }), /* @__PURE__ */ React.createElement("span", null, item.label), /* @__PURE__ */ React.createElement(Icon, { name: "chevron-right", size: 16, style: { marginLeft: "auto", opacity: 0.5 } })), hover && rect && ReactDOM.createPortal(
+    /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        className: "sidebar-tooltip-menu",
+        onMouseEnter: handleMouseEnter,
+        onMouseLeave: handleMouseLeave,
+        style: {
+          display: "block",
+          position: "fixed",
+          top: rect.top,
+          left: rect.right + 5,
+          zIndex: 999999
+        }
+      },
+      item.subItems.map((subItem) => /* @__PURE__ */ React.createElement(
+        "div",
+        {
+          key: subItem.id,
+          className: `sidebar-item tooltip-item ${currentRoute === subItem.id ? "active" : ""}`,
+          onClick: () => {
+            onNavigate(subItem.id);
+            onClose();
+            setHover(false);
+          }
+        },
+        /* @__PURE__ */ React.createElement(Icon, { name: subItem.icon, size: 20 }),
+        /* @__PURE__ */ React.createElement("span", null, subItem.label)
+      ))
+    ),
+    document.getElementById("app-overlay-root") || document.body
+  ));
+};
 const Sidebar = ({ currentRoute, onNavigate, notifCount, sidebarOpen, onClose, currentUser, latestAttendance, uhomeConfigKeys, uhomeConfigStr }) => {
   const user = currentUser || Auth.getUser();
   const roleStr = String(user?.role || "").trim().toLowerCase();
   const canSeeSettings = roleStr === "true" || roleStr === "1" || roleStr === "yes" || roleStr === "admin" || roleStr === "principal";
   const hasBanner = !!sessionStorage.getItem("original_jwt");
-  const sidebarStyle = hasBanner ? { top: 40, height: "calc(100vh - 40px)" } : {};
+  const sidebarStyle = { height: "100%" };
   const isQuickButtonHidden = (label) => {
     try {
       const normalizedLabel = label.replace(/\s+/g, "").toLowerCase();
@@ -703,23 +761,28 @@ const Sidebar = ({ currentRoute, onNavigate, notifCount, sidebarOpen, onClose, c
       return false;
     }
   };
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: `sidebar-overlay ${sidebarOpen ? "visible" : ""}`, onClick: onClose, style: hasBanner ? { top: 40 } : {} }), /* @__PURE__ */ React.createElement("aside", { className: `sidebar ${sidebarOpen ? "open" : ""}`, style: sidebarStyle }, /* @__PURE__ */ React.createElement("div", { className: "sidebar-header" }, /* @__PURE__ */ React.createElement("img", { src: "./assets/logo.png", alt: "Logo", className: "sidebar-logo" }), /* @__PURE__ */ React.createElement("div", { className: "sidebar-brand" }, /* @__PURE__ */ React.createElement("span", { className: "sidebar-brand-name" }, "Arabic School for Teachers"), /* @__PURE__ */ React.createElement("span", { className: "sidebar-brand-sub" }, "Staff"))), /* @__PURE__ */ React.createElement("nav", { className: "sidebar-nav" }, /* @__PURE__ */ React.createElement("div", { className: "sidebar-section-label" }, "Main"), navItems.filter((item) => {
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: `sidebar-overlay ${sidebarOpen ? "visible" : ""}`, onClick: onClose }), /* @__PURE__ */ React.createElement("aside", { className: `sidebar ${sidebarOpen ? "open" : ""}`, style: sidebarStyle }, /* @__PURE__ */ React.createElement("div", { className: "sidebar-header" }, /* @__PURE__ */ React.createElement("img", { src: "./assets/logo.png", alt: "Logo", className: "sidebar-logo" }), /* @__PURE__ */ React.createElement("div", { className: "sidebar-brand" }, /* @__PURE__ */ React.createElement("span", { className: "sidebar-brand-name" }, "Arabic School for Teachers"), /* @__PURE__ */ React.createElement("span", { className: "sidebar-brand-sub" }, "Staff"))), /* @__PURE__ */ React.createElement("nav", { className: "sidebar-nav" }, /* @__PURE__ */ React.createElement("div", { className: "sidebar-section-label" }, "Main"), navItems.filter((item) => {
     if (isQuickButtonHidden(item.label)) return false;
-    return isUserAdmin() || item.id !== "/students" && item.id !== "/teachers";
-  }).map((item) => /* @__PURE__ */ React.createElement(
-    "div",
-    {
-      key: item.id,
-      className: `sidebar-item ${currentRoute === item.id ? "active" : ""}`,
-      onClick: () => {
-        onNavigate(item.id);
-        onClose();
-      }
-    },
-    /* @__PURE__ */ React.createElement(Icon, { name: item.icon, size: 20 }),
-    /* @__PURE__ */ React.createElement("span", null, item.label),
-    item.id === "/notifications" && notifCount > 0 && /* @__PURE__ */ React.createElement("span", { className: "nav-badge" }, notifCount > 99 ? "99+" : notifCount)
-  )), /* @__PURE__ */ React.createElement("div", { className: "sidebar-divider" }), /* @__PURE__ */ React.createElement("div", { className: "sidebar-section-label" }, "Preferences"), canSeeSettings && /* @__PURE__ */ React.createElement(
+    return isUserAdmin() || item.id !== "/students" && item.id !== "/teachers" && item.id !== "/email-campaigns" && item.id !== "invoices-group";
+  }).map((item) => {
+    if (item.subItems) {
+      return /* @__PURE__ */ React.createElement(SidebarGroup, { key: item.id, item, currentRoute, onNavigate, onClose });
+    }
+    return /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        key: item.id,
+        className: `sidebar-item ${currentRoute === item.id ? "active" : ""}`,
+        onClick: () => {
+          onNavigate(item.id);
+          onClose();
+        }
+      },
+      /* @__PURE__ */ React.createElement(Icon, { name: item.icon, size: 20 }),
+      /* @__PURE__ */ React.createElement("span", null, item.label),
+      item.id === "/notifications" && notifCount > 0 && /* @__PURE__ */ React.createElement("span", { className: "nav-badge" }, notifCount > 99 ? "99+" : notifCount)
+    );
+  }), /* @__PURE__ */ React.createElement("div", { className: "sidebar-divider" }), /* @__PURE__ */ React.createElement("div", { className: "sidebar-section-label" }, "Preferences"), canSeeSettings && /* @__PURE__ */ React.createElement(
     "div",
     {
       className: `sidebar-item ${currentRoute === "/settings" ? "active" : ""}`,
@@ -840,8 +903,7 @@ const HomePage = () => {
     { label: "Teachers", icon: "user", route: "/teachers" },
     { label: "Classrooms", icon: "grid", route: "/classrooms" },
     { label: "Homework & Announcements", icon: "inbox", route: "/feed" },
-    { label: "Calendar", icon: "calendar", route: "/calendar" },
-    { label: "Absences", icon: "user-x", route: "/students", badge: absCount }
+    { label: "Calendar", icon: "calendar", route: "/calendar" }
   ];
   const hiddenKeys = (() => {
     const keys = /* @__PURE__ */ new Set();
@@ -3409,6 +3471,10 @@ const TeachersPage = () => {
   const [attendanceMode, setAttendanceMode] = useState(false);
   const [attendanceIds, setAttendanceIds] = useState(/* @__PURE__ */ new Set());
   const [submittingAtt, setSubmittingAtt] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFromDate, setExportFromDate] = useState(() => DateTime.now().startOf("month").toFormat("yyyy-MM-dd"));
+  const [exportToDate, setExportToDate] = useState(() => DateTime.now().endOf("month").toFormat("yyyy-MM-dd"));
+  const [exportingAtt, setExportingAtt] = useState(false);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [sortRules, setSortRules] = useState([{ column: "firstname", desc: false }]);
   const [sortOptions, setSortOptions] = useState([]);
@@ -3513,6 +3579,25 @@ const TeachersPage = () => {
       alert("Export failed: " + e.message);
     }
   };
+  const exportAttendance = async () => {
+    setExportingAtt(true);
+    try {
+      const res = await api.get("/api/teacherAttendance/formattedexport", {
+        params: { from: exportFromDate, to: exportToDate },
+        responseType: "blob"
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `teacher_attendance_export_${DateTime.now().toFormat("yyyyMMdd")}.xlsx`;
+      a.click();
+      setShowExportModal(false);
+    } catch (e) {
+      alert("Export failed: " + e.message);
+    } finally {
+      setExportingAtt(false);
+    }
+  };
   const toggleAttId = (id) => setAttendanceIds((prev) => {
     const n = new Set(prev);
     n.has(id) ? n.delete(id) : n.add(id);
@@ -3570,6 +3655,9 @@ const TeachersPage = () => {
     s
   ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary feed-tool-btn", title: "Filters & Sort", onClick: () => setShowFiltersModal(true) }, /* @__PURE__ */ React.createElement(Icon, { name: "filter", size: 16 }), /* @__PURE__ */ React.createElement("span", null, "Filters & Sort")), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: () => setShowActionsMenu(!showActionsMenu) }, /* @__PURE__ */ React.createElement(Icon, { name: "more-horizontal", size: 18 }), " Actions"), showActionsMenu && /* @__PURE__ */ React.createElement("div", { className: "dropdown-menu shadow", style: { position: "absolute", right: 0, top: "100%", marginTop: 8, zIndex: 100, minWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { className: "dropdown-item", onClick: exportExcel }, /* @__PURE__ */ React.createElement(Icon, { name: "file-text", size: 14, style: { marginRight: 8 } }), " Export as Excel"), /* @__PURE__ */ React.createElement("div", { className: "dropdown-item", onClick: () => {
     setShowActionsMenu(false);
+    setShowExportModal(true);
+  } }, /* @__PURE__ */ React.createElement(Icon, { name: "download", size: 14, style: { marginRight: 8 } }), " Export Attendance"), /* @__PURE__ */ React.createElement("div", { className: "dropdown-item", onClick: () => {
+    setShowActionsMenu(false);
     setAttendanceMode(true);
     setAttendanceIds(/* @__PURE__ */ new Set());
   } }, /* @__PURE__ */ React.createElement(Icon, { name: "check-circle", size: 14, style: { marginRight: 8 } }), " Take Attendance"))), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setIsCreating(true) }, /* @__PURE__ */ React.createElement(Icon, { name: "plus", size: 18 }), " New Teacher"))), /* @__PURE__ */ React.createElement("div", { className: "card" }, loading ? /* @__PURE__ */ React.createElement("div", { className: "card-body" }, /* @__PURE__ */ React.createElement(TableSkeleton, { rows: 8, cols: 5 })) : error ? /* @__PURE__ */ React.createElement("div", { className: "card-body" }, /* @__PURE__ */ React.createElement("div", { className: "empty-state" }, /* @__PURE__ */ React.createElement(Icon, { name: "alert-circle", size: 40 }), /* @__PURE__ */ React.createElement("p", { className: "empty-state-title" }, "Error loading teachers"))) : users.length === 0 ? /* @__PURE__ */ React.createElement("div", { className: "card-body" }, /* @__PURE__ */ React.createElement("div", { className: "empty-state" }, /* @__PURE__ */ React.createElement(Icon, { name: "user", size: 40 }), /* @__PURE__ */ React.createElement("p", { className: "empty-state-title" }, "No teachers found"))) : /* @__PURE__ */ React.createElement("div", { className: "card-body no-pad" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column" } }, users.map((u, i) => {
@@ -3601,7 +3689,7 @@ const TeachersPage = () => {
   })))), attendanceMode && /* @__PURE__ */ React.createElement(GlobalCanvasPortal, null, /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", padding: "16px 24px", background: "var(--color-bg-card)", borderRadius: "var(--radius-xl)", boxShadow: "var(--shadow-lg)", zIndex: 999, border: "1px solid var(--color-border)", width: "90%", maxWidth: 500 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", style: { color: "#dc2626", padding: "0.6rem 1.2rem", borderRadius: "var(--radius-lg)" }, disabled: submittingAtt, onClick: () => {
     setAttendanceMode(false);
     setAttendanceIds(/* @__PURE__ */ new Set());
-  } }, "Cancel"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", style: { flex: 1, padding: "0.6rem", borderRadius: "var(--radius-lg)", fontWeight: 600 }, disabled: submittingAtt, onClick: submitAttendance }, submittingAtt ? "Submitting\u2026" : `Mark as Present (${attendanceIds.size})`)))), attendanceMode && /* @__PURE__ */ React.createElement("div", { style: { height: 80 } }), showFiltersModal && /* @__PURE__ */ React.createElement(GlobalCanvasPortal, null, /* @__PURE__ */ React.createElement("div", { className: "modal-overlay", onClick: () => setShowFiltersModal(false) }, /* @__PURE__ */ React.createElement("div", { className: "modal-box", onClick: (e) => e.stopPropagation(), style: { maxWidth: 550, width: "100%" } }, /* @__PURE__ */ React.createElement("div", { className: "modal-title" }, "Teacher Filters & Sorting"), /* @__PURE__ */ React.createElement("div", { className: "modal-body" }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ React.createElement("h4", { style: { margin: "0 0 12px 0", display: "flex", justifyContent: "space-between" } }, "Sorting Rules", /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary btn-sm", onClick: () => setSortRules([...sortRules, { column: "firstname", desc: false }]), disabled: sortRules.length >= 6 }, "+ Add Rule")), sortRules.length === 0 ? /* @__PURE__ */ React.createElement("p", { style: { fontSize: "0.85rem", color: "var(--color-text-light)" } }, "No custom sort rules applied.") : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, sortRules.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", gap: 12, alignItems: "center" } }, /* @__PURE__ */ React.createElement("select", { className: "form-input", style: { flex: 2 }, value: r.column, onChange: (e) => {
+  } }, "Cancel"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", style: { flex: 1, padding: "0.6rem", borderRadius: "var(--radius-lg)", fontWeight: 600 }, disabled: submittingAtt, onClick: submitAttendance }, submittingAtt ? "Submitting\u2026" : `Mark as Present (${attendanceIds.size})`)))), attendanceMode && /* @__PURE__ */ React.createElement("div", { style: { height: 80 } }), showExportModal && /* @__PURE__ */ React.createElement(GlobalCanvasPortal, null, /* @__PURE__ */ React.createElement("div", { className: "modal-overlay", onClick: () => setShowExportModal(false) }, /* @__PURE__ */ React.createElement("div", { className: "modal-box", onClick: (e) => e.stopPropagation(), style: { maxWidth: 400, width: "100%" } }, /* @__PURE__ */ React.createElement("div", { className: "modal-title" }, "Export Teacher Attendance"), /* @__PURE__ */ React.createElement("div", { className: "modal-body" }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("label", { style: { display: "block", marginBottom: 8, fontWeight: 500 } }, "From Date"), /* @__PURE__ */ React.createElement("input", { type: "date", className: "form-input", value: exportFromDate, onChange: (e) => setExportFromDate(e.target.value) })), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("label", { style: { display: "block", marginBottom: 8, fontWeight: 500 } }, "To Date"), /* @__PURE__ */ React.createElement("input", { type: "date", className: "form-input", value: exportToDate, onChange: (e) => setExportToDate(e.target.value) }))), /* @__PURE__ */ React.createElement("div", { className: "modal-actions" }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", disabled: exportingAtt, onClick: () => setShowExportModal(false) }, "Cancel"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", disabled: exportingAtt, onClick: exportAttendance }, exportingAtt ? "Exporting..." : "Export"))))), showFiltersModal && /* @__PURE__ */ React.createElement(GlobalCanvasPortal, null, /* @__PURE__ */ React.createElement("div", { className: "modal-overlay", onClick: () => setShowFiltersModal(false) }, /* @__PURE__ */ React.createElement("div", { className: "modal-box", onClick: (e) => e.stopPropagation(), style: { maxWidth: 550, width: "100%" } }, /* @__PURE__ */ React.createElement("div", { className: "modal-title" }, "Teacher Filters & Sorting"), /* @__PURE__ */ React.createElement("div", { className: "modal-body" }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ React.createElement("h4", { style: { margin: "0 0 12px 0", display: "flex", justifyContent: "space-between" } }, "Sorting Rules", /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary btn-sm", onClick: () => setSortRules([...sortRules, { column: "firstname", desc: false }]), disabled: sortRules.length >= 6 }, "+ Add Rule")), sortRules.length === 0 ? /* @__PURE__ */ React.createElement("p", { style: { fontSize: "0.85rem", color: "var(--color-text-light)" } }, "No custom sort rules applied.") : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, sortRules.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", gap: 12, alignItems: "center" } }, /* @__PURE__ */ React.createElement("select", { className: "form-input", style: { flex: 2 }, value: r.column, onChange: (e) => {
     const next = [...sortRules];
     next[i].column = e.target.value;
     setSortRules(next);
@@ -7447,7 +7535,7 @@ const StoryCreateBookingModal = ({ storyId, onClose, onCreated }) => {
     try {
       const isAllDigits = /^\d+$/.test(trimmed);
       const escaped = trimmed.replace(/'/g, "''");
-      const filter = isAllDigits ? `code eq '${escaped}'` : `name con '${escaped}';classroom_name con '${escaped}'`;
+      const filter = isAllDigits ? `code eq '${escaped}'` : `name con '${escaped}',classroom_name con '${escaped}'`;
       const res = await api.get("/api/students", {
         params: { col: "Id,name,photo,classroom_name", filter, orderby: "code DESC", l: 0, limit: 5 }
       });
@@ -7830,7 +7918,16 @@ const DashboardLayout = ({ onLogout }) => {
       PageComponent = /* @__PURE__ */ React.createElement(CalendarPage, null);
       break;
     case "/payments":
-      PageComponent = /* @__PURE__ */ React.createElement(PaymentsLogPage, null);
+      PageComponent = isUserAdmin() ? /* @__PURE__ */ React.createElement(PaymentsLogPage, null) : /* @__PURE__ */ React.createElement(HomePage, null);
+      break;
+    case "/mass-invoices":
+      PageComponent = isUserAdmin() ? /* @__PURE__ */ React.createElement(MassInvoicesPage, null) : /* @__PURE__ */ React.createElement(HomePage, null);
+      break;
+    case "/email-campaigns":
+      PageComponent = isUserAdmin() ? /* @__PURE__ */ React.createElement(EmailCampaignPage, null) : /* @__PURE__ */ React.createElement(HomePage, null);
+      break;
+    case "/send-reminders":
+      PageComponent = isUserAdmin() ? /* @__PURE__ */ React.createElement(SendRemindersPage, null) : /* @__PURE__ */ React.createElement(HomePage, null);
       break;
     case "/profile":
       PageComponent = /* @__PURE__ */ React.createElement(ProfilePage, { onLogout });
@@ -7850,7 +7947,7 @@ const DashboardLayout = ({ onLogout }) => {
     window.location.reload();
   };
   if (appLoading) {
-    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" } }, originalJwt && /* @__PURE__ */ React.createElement("div", { id: "loginas-banner", style: { background: "#ef4444", height: 40 } }), /* @__PURE__ */ React.createElement("div", { id: "dashboard-wrapper", className: "dashboard-wrapper", style: { flex: 1, minHeight: 0, height: "auto", display: "flex", transform: "translateZ(0)" } }, /* @__PURE__ */ React.createElement("aside", { className: "sidebar open", style: originalJwt ? { top: 40, height: "calc(100vh - 40px)" } : {} }, /* @__PURE__ */ React.createElement("div", { className: "sidebar-header", style: { padding: "24px 20px", display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 40, height: 40, borderRadius: "50%", flexShrink: 0 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: "80%", height: 16, borderRadius: 4, marginBottom: 6 } }), /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: "50%", height: 12, borderRadius: 4 } }))), /* @__PURE__ */ React.createElement("div", { style: { padding: "20px" } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 40, height: 12, borderRadius: 4, marginBottom: 16 } }), [1, 2, 3, 4, 5, 6].map((i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", gap: 12, marginBottom: 20, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 20, height: 20, borderRadius: 4 } }), /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { flex: 1, height: 16, borderRadius: 4 } }))))), /* @__PURE__ */ React.createElement("div", { className: "main-content", style: { flex: 1, display: "flex", flexDirection: "column", backgroundColor: "var(--color-bg)" } }, /* @__PURE__ */ React.createElement("div", { style: { height: 64, borderBottom: "1px solid var(--color-border)", backgroundColor: "#fff", display: "flex", alignItems: "center", padding: "0 24px", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 150, height: 24, borderRadius: 4 } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16 } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 32, height: 32, borderRadius: "50%" } }), /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 32, height: 32, borderRadius: "50%" } }))), /* @__PURE__ */ React.createElement("div", { style: { padding: 24, flex: 1 } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: "30%", height: 32, borderRadius: 4, marginBottom: 24 } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 24, marginBottom: 24 } }, [1, 2, 3].map((i) => /* @__PURE__ */ React.createElement("div", { className: "skeleton", key: i, style: { flex: 1, height: 120, borderRadius: 12 } }))), /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: "100%", height: 300, borderRadius: 12 } })))));
+    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" } }, originalJwt && /* @__PURE__ */ React.createElement("div", { id: "loginas-banner", style: { background: "#ef4444", height: 40 } }), /* @__PURE__ */ React.createElement("div", { id: "dashboard-wrapper", className: "dashboard-wrapper", style: { flex: 1, minHeight: 0, height: "auto", display: "flex", transform: "translateZ(0)" } }, /* @__PURE__ */ React.createElement("aside", { className: "sidebar open", style: { height: "100%" } }, /* @__PURE__ */ React.createElement("div", { className: "sidebar-header", style: { padding: "24px 20px", display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 40, height: 40, borderRadius: "50%", flexShrink: 0 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: "80%", height: 16, borderRadius: 4, marginBottom: 6 } }), /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: "50%", height: 12, borderRadius: 4 } }))), /* @__PURE__ */ React.createElement("div", { style: { padding: "20px" } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 40, height: 12, borderRadius: 4, marginBottom: 16 } }), [1, 2, 3, 4, 5, 6].map((i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", gap: 12, marginBottom: 20, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 20, height: 20, borderRadius: 4 } }), /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { flex: 1, height: 16, borderRadius: 4 } }))))), /* @__PURE__ */ React.createElement("div", { className: "main-content", style: { flex: 1, display: "flex", flexDirection: "column", backgroundColor: "var(--color-bg)" } }, /* @__PURE__ */ React.createElement("div", { style: { height: 64, borderBottom: "1px solid var(--color-border)", backgroundColor: "#fff", display: "flex", alignItems: "center", padding: "0 24px", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 150, height: 24, borderRadius: 4 } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16 } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 32, height: 32, borderRadius: "50%" } }), /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: 32, height: 32, borderRadius: "50%" } }))), /* @__PURE__ */ React.createElement("div", { style: { padding: 24, flex: 1 } }, /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: "30%", height: 32, borderRadius: 4, marginBottom: 24 } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 24, marginBottom: 24 } }, [1, 2, 3].map((i) => /* @__PURE__ */ React.createElement("div", { className: "skeleton", key: i, style: { flex: 1, height: 120, borderRadius: 12 } }))), /* @__PURE__ */ React.createElement("div", { className: "skeleton", style: { width: "100%", height: 300, borderRadius: 12 } })))));
   }
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" } }, originalJwt && /* @__PURE__ */ React.createElement("div", { id: "loginas-banner", style: { background: "#ef4444", color: "white", padding: "0 20px", height: 40, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, zIndex: 1e5, position: "relative" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, fontSize: "0.9rem" } }, "You are currently logged in as ", currentUser?.name, "."), /* @__PURE__ */ React.createElement("button", { onClick: handleReturnToProfile, style: { background: "white", color: "#ef4444", border: "none", padding: "4px 14px", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: "0.85rem" } }, "Return to My Profile")), /* @__PURE__ */ React.createElement("div", { id: "dashboard-wrapper", className: "dashboard-wrapper", style: { flex: 1, minHeight: 0, height: "auto", transform: "translateZ(0)" } }, /* @__PURE__ */ React.createElement(
     Sidebar,
@@ -7884,6 +7981,645 @@ const DashboardLayout = ({ onLogout }) => {
       showGlobalSearch: route === "/home"
     }
   ), /* @__PURE__ */ React.createElement("div", { className: "page-content", key: route }, PageComponent))));
+};
+const EmailCampaignPage = () => {
+  const [step, setStep] = useState(1);
+  const [targetMode, setTargetMode] = useState("students");
+  const [targetStatus, setTargetStatus] = useState("Enrolled");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [targetClassrooms, setTargetClassrooms] = useState(/* @__PURE__ */ new Set());
+  const [students, setStudents] = useState([]);
+  const [selectedStudents, setSelectedStudents] = useState(/* @__PURE__ */ new Set());
+  const fetchedStudentsRef = useRef(/* @__PURE__ */ new Map());
+  const [classrooms, setClassrooms] = useState([]);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [selectedClassroomId, setSelectedClassroomId] = useState("");
+  const [specificStudentStatus, setSpecificStudentStatus] = useState("Enrolled");
+  const toggleAllStudents = (list) => {
+    const next = new Set(selectedStudents);
+    const allSelected = list.length > 0 && list.every((s) => next.has(s.Id || s.id));
+    list.forEach((s) => {
+      if (allSelected) next.delete(s.Id || s.id);
+      else next.add(s.Id || s.id);
+    });
+    setSelectedStudents(next);
+  };
+  const [templateId, setTemplateId] = useState("");
+  const [templates, setTemplates] = useState([]);
+  const [subject, setSubject] = useState("");
+  useEffect(() => {
+    if (!subject && templateId) {
+      const t = templates.find((x) => x.id.toString() === templateId.toString());
+      if (t) setSubject(t.name);
+    }
+  }, [templateId]);
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [campaignId, setCampaignId] = useState(null);
+  const [campaignStatus, setCampaignStatus] = useState(null);
+  const [polling, setPolling] = useState(false);
+  const pollInterval = useRef(null);
+  const searchDebouncer = useRef(null);
+  useEffect(() => {
+    api.get("/api/classrooms", { params: { col: "Id,name", limit: 150, filter: "Status eq 'Current'" } }).then((res) => setClassrooms(res.data?.data || res.data || []));
+    api.get("/api/templates", { params: { filter: "type eq 'email'", col: "id,name,content" } }).then((res) => setTemplates(res.data?.data || res.data || []));
+  }, []);
+  useEffect(() => {
+    if (searchDebouncer.current) clearTimeout(searchDebouncer.current);
+    searchDebouncer.current = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 350);
+  }, [search]);
+  useEffect(() => {
+    setLoadingStudents(true);
+    const q = debouncedSearch.trim();
+    let filter = "";
+    if (q) {
+      const escaped = q.replace(/'/g, "''");
+      filter = `name con '${escaped}'`;
+    }
+    if (specificStudentStatus && specificStudentStatus !== "All") {
+      filter = filter ? `${filter},Status eq '${specificStudentStatus}'` : `Status eq '${specificStudentStatus}'`;
+    }
+    if (selectedClassroomId) {
+      filter = filter ? `${filter},ClassroomId eq ${selectedClassroomId}` : `ClassroomId eq ${selectedClassroomId}`;
+    }
+    api.get("/api/students", { params: { col: "Id,name,code,photo,classroom_name", limit: 1e3, filter } }).then((res) => {
+      const list = res.data?.data || res.data || [];
+      list.forEach((s) => fetchedStudentsRef.current.set(s.Id || s.id, s));
+      setStudents(list);
+    }).finally(() => setLoadingStudents(false));
+  }, [debouncedSearch, selectedClassroomId, specificStudentStatus]);
+  const toggleStudent = (id) => {
+    const next = new Set(selectedStudents);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedStudents(next);
+  };
+  const displayedStudents = useMemo(() => {
+    const result = [];
+    const seen = /* @__PURE__ */ new Set();
+    selectedStudents.forEach((id) => {
+      const s = fetchedStudentsRef.current.get(id);
+      if (s) {
+        result.push(s);
+        seen.add(id);
+      }
+    });
+    students.forEach((s) => {
+      const id = s.Id || s.id;
+      if (!seen.has(id)) {
+        result.push(s);
+        seen.add(id);
+      }
+    });
+    return result;
+  }, [students, selectedStudents]);
+  const toggleClassroom = (id) => {
+    const next = new Set(targetClassrooms);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setTargetClassrooms(next);
+  };
+  const handleFileUpload = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append("file", files[i]);
+    }
+    setUploading(true);
+    try {
+      const res = await api.post("/api/campaigns/attachments/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setAttachments((prev) => [...prev, ...res.data]);
+    } catch (err) {
+      alert("Failed to upload attachments.");
+    } finally {
+      setUploading(false);
+    }
+  };
+  const removeAttachment = (index) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+  const startCampaign = async () => {
+    if (!templateId) return alert("Please select a template");
+    if (targetMode === "students" && selectedStudents.size === 0) return alert("Please select at least one student");
+    if (targetMode === "classrooms" && targetClassrooms.size === 0) return alert("Please select at least one classroom");
+    try {
+      const payload = {
+        targetMode,
+        targetStatus,
+        dateFrom,
+        dateTo,
+        students: Array.from(selectedStudents),
+        classrooms: Array.from(targetClassrooms),
+        templateId,
+        subject,
+        attachments
+      };
+      const res = await api.post("/api/campaigns/email", payload);
+      setCampaignId(res.data.campaignId);
+      setStep(4);
+      setPolling(true);
+    } catch (err) {
+      alert("Failed to create campaign: " + (err.response?.data?.message || err.message));
+    }
+  };
+  useEffect(() => {
+    if (polling && campaignId) {
+      const check = async () => {
+        try {
+          const res = await api.get(`/api/campaigns/email/${campaignId}/status`);
+          setCampaignStatus(res.data);
+          if (["COMPLETED", "FAILED", "COMPLETED_WITH_ERRORS"].includes(res.data.status)) {
+            setPolling(false);
+            clearInterval(pollInterval.current);
+          }
+        } catch {
+        }
+      };
+      check();
+      pollInterval.current = setInterval(check, 3e3);
+    }
+    return () => clearInterval(pollInterval.current);
+  }, [polling, campaignId]);
+  const reset = () => {
+    setStep(1);
+    setCampaignId(null);
+    setCampaignStatus(null);
+    setTargetMode("students");
+    setSelectedStudents(/* @__PURE__ */ new Set());
+    setTargetClassrooms(/* @__PURE__ */ new Set());
+    setAttachments([]);
+    setSubject("");
+  };
+  return /* @__PURE__ */ React.createElement("div", { style: { padding: 24, maxWidth: 1e3, margin: "0 auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h2", { style: { margin: 0 } }, "Email Campaign"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 32, borderRadius: "50%", background: step >= 1 ? "var(--color-primary)" : "#e2e8f0", color: step >= 1 ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" } }, "1"), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 2, background: step >= 2 ? "var(--color-primary)" : "#e2e8f0", alignSelf: "center" } }), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 32, borderRadius: "50%", background: step >= 2 ? "var(--color-primary)" : "#e2e8f0", color: step >= 2 ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" } }, "2"), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 2, background: step >= 3 ? "var(--color-primary)" : "#e2e8f0", alignSelf: "center" } }), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 32, borderRadius: "50%", background: step >= 3 ? "var(--color-primary)" : "#e2e8f0", color: step >= 3 ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" } }, "3"), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 2, background: step >= 4 ? "var(--color-primary)" : "#e2e8f0", alignSelf: "center" } }), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 32, borderRadius: "50%", background: step >= 4 ? "var(--color-primary)" : "#e2e8f0", color: step >= 4 ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" } }, "4"))), step === 1 && /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 24, display: "flex", flexDirection: "column", height: "calc(100vh - 200px)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("h3", { style: { margin: 0, fontWeight: 700 } }, "Select Recipients"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setStep(2), disabled: targetMode === "students" && selectedStudents.size === 0 || targetMode === "classrooms" && targetClassrooms.size === 0 }, "Next Step ", /* @__PURE__ */ React.createElement(Icon, { name: "arrow-right", size: 16, style: { marginLeft: 8 } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, borderBottom: "1px solid var(--color-border)", paddingBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", gap: 8 } }, ["students", "classrooms", "all_enrolled"].map((mode) => /* @__PURE__ */ React.createElement("button", { key: mode, className: `btn ${targetMode === mode ? "btn-primary" : "btn-secondary"}`, onClick: () => setTargetMode(mode) }, mode === "students" && "Specific Students", mode === "classrooms" && "By Classroom(s)", mode === "all_enrolled" && "Custom")))), targetMode === "all_enrolled" && /* @__PURE__ */ React.createElement("div", { style: { background: "#f8fafc", border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h4", { style: { margin: "0 0 16px 0", fontSize: "1rem", color: "var(--color-text-main)" } }, "Select Target Group"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600, color: "var(--color-text-muted)", fontSize: "0.9rem" } }, "Status:"), /* @__PURE__ */ React.createElement("select", { className: "form-input", value: targetStatus, onChange: (e) => setTargetStatus(e.target.value), style: { width: 150 } }, /* @__PURE__ */ React.createElement("option", { value: "Enrolled" }, "Enrolled"), /* @__PURE__ */ React.createElement("option", { value: "Pending" }, "Pending"), /* @__PURE__ */ React.createElement("option", { value: "Invited" }, "Invited"), /* @__PURE__ */ React.createElement("option", { value: "Discontinued" }, "Discontinued")), /* @__PURE__ */ React.createElement("div", { style: { width: 1, height: 24, background: "var(--color-border)", margin: "0 8px" } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600, color: "var(--color-text-muted)", fontSize: "0.9rem" } }, "From:"), /* @__PURE__ */ React.createElement("input", { type: "date", className: "form-input", value: dateFrom, onChange: (e) => setDateFrom(e.target.value) })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600, color: "var(--color-text-muted)", fontSize: "0.9rem" } }, "To:"), /* @__PURE__ */ React.createElement("input", { type: "date", className: "form-input", value: dateTo, onChange: (e) => setDateTo(e.target.value) }))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, fontSize: "0.85rem", color: "var(--color-text-muted)" } }, targetStatus === "Pending" || targetStatus === "Invited" ? /* @__PURE__ */ React.createElement(React.Fragment, null, "This campaign will be sent to students with ", /* @__PURE__ */ React.createElement("strong", null, targetStatus), " status based on their ", /* @__PURE__ */ React.createElement("strong", null, "EOI Date"), ".") : targetStatus === "Discontinued" ? /* @__PURE__ */ React.createElement(React.Fragment, null, "This campaign will be sent to students with ", /* @__PURE__ */ React.createElement("strong", null, "Discontinued"), " status based on their ", /* @__PURE__ */ React.createElement("strong", null, "Discontinue Date"), ".") : /* @__PURE__ */ React.createElement(React.Fragment, null, "This campaign will be sent to students with ", /* @__PURE__ */ React.createElement("strong", null, "Enrolled"), " status based on their ", /* @__PURE__ */ React.createElement("strong", null, "Acceptance Date"), "."))), targetMode === "students" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement("input", { type: "text", className: "form-input", placeholder: "Search students...", value: search, onChange: (e) => setSearch(e.target.value), style: { flex: 1 } }), /* @__PURE__ */ React.createElement("select", { className: "form-input", value: specificStudentStatus, onChange: (e) => setSpecificStudentStatus(e.target.value), style: { width: 150 } }, /* @__PURE__ */ React.createElement("option", { value: "All" }, "All Statuses"), /* @__PURE__ */ React.createElement("option", { value: "Enrolled" }, "Enrolled"), /* @__PURE__ */ React.createElement("option", { value: "Pending" }, "Pending"), /* @__PURE__ */ React.createElement("option", { value: "Invited" }, "Invited"), /* @__PURE__ */ React.createElement("option", { value: "Discontinued" }, "Discontinued")), /* @__PURE__ */ React.createElement("select", { className: "form-input", value: selectedClassroomId, onChange: (e) => setSelectedClassroomId(e.target.value), style: { width: 250 } }, /* @__PURE__ */ React.createElement("option", { value: "" }, "All Classrooms"), classrooms.map((c) => /* @__PURE__ */ React.createElement("option", { key: c.Id || c.id, value: c.Id || c.id }, c.name || c.Name)))), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", border: "1px solid var(--color-border)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: "1px solid var(--color-border)", background: "#f8fafc", fontWeight: 600, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-muted)" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: displayedStudents.length > 0 && displayedStudents.every((s) => selectedStudents.has(s.Id || s.id)), onChange: () => toggleAllStudents(displayedStudents), style: { width: 18, height: 18, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("div", { style: { width: 40, flexShrink: 0 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, "Student Details (", selectedStudents.size, " selected)")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, overflowY: "auto" } }, loadingStudents && displayedStudents.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { padding: 20, textAlign: "center", color: "var(--color-text-muted)" } }, "Loading students...") : displayedStudents.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { padding: 20, textAlign: "center", color: "var(--color-text-muted)" } }, "No students found.") : displayedStudents.map((s) => {
+    const id = s.Id || s.id;
+    const isSelected = selectedStudents.has(id);
+    const photoUrl = s.photo || s.Photo;
+    return /* @__PURE__ */ React.createElement("div", { key: id, onClick: () => toggleStudent(id), style: { display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: "1px solid var(--color-border)", cursor: "pointer", background: isSelected ? "#f0fdf4" : "transparent" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: isSelected, readOnly: true, style: { width: 18, height: 18 } }), /* @__PURE__ */ React.createElement(Avatar, { name: s.name || s.Name || "Student", photoUrl, id: s.Id || s.id, size: 40, style: { flexShrink: 0 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, color: "var(--color-text)" } }, s.name || s.Name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("span", null, s.code || s.Code || id), s.classroom_name && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", null, "\u2022"), /* @__PURE__ */ React.createElement("span", null, s.classroom_name)))));
+  })))), targetMode === "classrooms" && /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", border: "1px solid var(--color-border)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: "1px solid var(--color-border)", background: "#f8fafc", fontWeight: 600, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-muted)" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: classrooms.length > 0 && classrooms.every((c) => targetClassrooms.has(c.Id || c.id)), onChange: () => {
+    const next = new Set(targetClassrooms);
+    const allSelected = classrooms.length > 0 && classrooms.every((c) => next.has(c.Id || c.id));
+    classrooms.forEach((c) => {
+      if (allSelected) next.delete(c.Id || c.id);
+      else next.add(c.Id || c.id);
+    });
+    setTargetClassrooms(next);
+  }, style: { width: 18, height: 18, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, "Select Classrooms (", targetClassrooms.size, " selected)")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, overflowY: "auto" } }, classrooms.map((c) => {
+    const id = c.Id || c.id;
+    const isSelected = targetClassrooms.has(id);
+    return /* @__PURE__ */ React.createElement("div", { key: id, onClick: () => toggleClassroom(id), style: { display: "flex", alignItems: "center", gap: 16, padding: "16px", borderBottom: "1px solid var(--color-border)", cursor: "pointer", background: isSelected ? "#f0fdf4" : "transparent" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: isSelected, readOnly: true, style: { width: 18, height: 18 } }), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, fontSize: "1.05rem", color: "var(--color-text)" } }, c.name || c.Name));
+  }))), targetMode === "all_enrolled" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 48, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, maxWidth: 500 } }, /* @__PURE__ */ React.createElement("div", { style: { color: "#16a34a", marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Icon, { name: "users", size: 48 })), /* @__PURE__ */ React.createElement("h3", { style: { margin: "0 0 8px 0", color: "#166534", fontSize: "1.5rem" } }, "All Enrolled Students"), /* @__PURE__ */ React.createElement("div", { style: { color: "#15803d", fontSize: "1.1rem" } }, "This will dynamically issue the campaign to ", /* @__PURE__ */ React.createElement("b", null, "every student"), ' whose status is currently "Enrolled".')))), step === 2 && /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 32 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h3", { style: { margin: 0, fontWeight: 700 } }, "Email Content"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: () => setStep(1) }, "Back"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setStep(3), disabled: !templateId }, "Next Step ", /* @__PURE__ */ React.createElement(Icon, { name: "arrow-right", size: 16, style: { marginLeft: 8 } })))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 24, maxWidth: 600 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { display: "block", marginBottom: 8, fontWeight: 600 } }, "Subject Line"), /* @__PURE__ */ React.createElement("input", { type: "text", className: "form-input", value: subject, onChange: (e) => setSubject(e.target.value), placeholder: "e.g., Important Update", style: { width: "100%", padding: "12px 16px", fontSize: "1.05rem" } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: 8 } }, "If left blank, the template's default subject will be used.")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { display: "block", marginBottom: 8, fontWeight: 600 } }, "Email Template ", /* @__PURE__ */ React.createElement("span", { style: { color: "red" } }, "*")), /* @__PURE__ */ React.createElement("select", { className: "form-input", value: templateId, onChange: (e) => setTemplateId(e.target.value), style: { width: "100%", padding: "12px 16px", fontSize: "1.05rem" } }, /* @__PURE__ */ React.createElement("option", { value: "" }, "Select a template..."), templates.map((t) => /* @__PURE__ */ React.createElement("option", { key: t.Id || t.id, value: t.Id || t.id }, t.Name || t.name)))), templateId && templates.find((t) => String(t.Id || t.id) === String(templateId)) && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { display: "block", marginBottom: 8, fontWeight: 600 } }, "Template Preview"), /* @__PURE__ */ React.createElement("div", { style: { border: "1px solid var(--color-border)", borderRadius: 8, padding: 24, background: "#fff", maxHeight: 400, overflowY: "auto" }, dangerouslySetInnerHTML: { __html: templates.find((t) => String(t.Id || t.id) === String(templateId))?.Content || templates.find((t) => String(t.Id || t.id) === String(templateId))?.content || '<div style="color:var(--color-text-muted)">No content available for this template.</div>' } })))), step === 3 && /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 32 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h3", { style: { margin: 0, fontWeight: 700 } }, "Attachments & Review"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: () => setStep(2) }, "Back"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: startCampaign }, "Send Campaign ", /* @__PURE__ */ React.createElement(Icon, { name: "send", size: 16, style: { marginLeft: 8 } })))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Icon, { name: "paperclip", size: 20, color: "var(--color-text-muted)" }), /* @__PURE__ */ React.createElement("h4", { style: { margin: 0, fontSize: "1.1rem" } }, "Attachments")), /* @__PURE__ */ React.createElement("div", { style: { border: "2px dashed var(--color-border)", borderRadius: 8, padding: 24, textAlign: "center", background: "#f8fafc", marginBottom: 16, cursor: "pointer" }, onClick: () => document.getElementById("campaign-upload-input").click() }, /* @__PURE__ */ React.createElement("input", { id: "campaign-upload-input", type: "file", multiple: true, onChange: handleFileUpload, disabled: uploading, style: { display: "none" } }), uploading ? /* @__PURE__ */ React.createElement("div", { style: { color: "var(--color-primary)", fontWeight: 600 } }, "Uploading...") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Icon, { name: "upload-cloud", size: 32, color: "var(--color-primary)", style: { marginBottom: 12 } }), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, "Click to browse files"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: 4 } }, "Optional attachments for this campaign"))), attachments.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, attachments.map((a, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", border: "1px solid var(--color-border)", borderRadius: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(Icon, { name: "file", size: 16, color: "var(--color-text-muted)" }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: "0.9rem", fontWeight: 500 } }, a.fileName)), /* @__PURE__ */ React.createElement(Icon, { name: "trash-2", size: 16, color: "red", style: { cursor: "pointer" }, onClick: () => removeAttachment(i) }))))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { padding: 24, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, height: "100%" } }, /* @__PURE__ */ React.createElement("h4", { style: { margin: "0 0 24px 0", fontSize: "1.1rem", color: "#166534", display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(Icon, { name: "check-circle", size: 20 }), " Campaign Summary"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "#15803d", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" } }, "Target Audience"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "1.1rem", color: "#14532d", fontWeight: 600, marginTop: 4 } }, targetMode === "students" ? `${selectedStudents.size} Students` : targetMode === "classrooms" ? `${targetClassrooms.size} Classrooms` : "All Enrolled Students")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "#15803d", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" } }, "Email Template"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "1.1rem", color: "#14532d", fontWeight: 600, marginTop: 4 } }, templates.find((t) => String(t.Id || t.id) === String(templateId))?.Name || templates.find((t) => String(t.Id || t.id) === String(templateId))?.name || "None Selected")), subject && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "#15803d", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" } }, "Subject Override"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "1.1rem", color: "#14532d", fontWeight: 600, marginTop: 4 } }, subject)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "#15803d", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" } }, "Attachments"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "1.1rem", color: "#14532d", fontWeight: 600, marginTop: 4 } }, attachments.length, " ", attachments.length === 1 ? "file" : "files"))))))), step === 4 && /* @__PURE__ */ React.createElement("div", { className: "card", style: { textAlign: "center", padding: "64px 24px", maxWidth: 600, margin: "0 auto" } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 24 } }, campaignStatus && ["COMPLETED", "FAILED", "COMPLETED_WITH_ERRORS"].includes(campaignStatus.status) ? /* @__PURE__ */ React.createElement(Icon, { name: campaignStatus.status === "COMPLETED" ? "check-circle" : "alert-circle", size: 64, color: campaignStatus.status === "COMPLETED" ? "#16a34a" : "#ea580c" }) : /* @__PURE__ */ React.createElement(Icon, { name: "loader", size: 64, color: "var(--color-primary)", className: "spin" })), /* @__PURE__ */ React.createElement("h2", { style: { margin: "0 0 8px 0", fontSize: "1.8rem" } }, "Campaign Progress"), /* @__PURE__ */ React.createElement("div", { style: { color: "var(--color-text-muted)", fontSize: "1.1rem", marginBottom: 32, textTransform: "capitalize" } }, campaignStatus ? campaignStatus.status.toLowerCase().replace(/_/g, " ") : "starting..."), /* @__PURE__ */ React.createElement("div", { style: { background: "#f8fafc", padding: 24, borderRadius: 12, border: "1px solid var(--color-border)", marginBottom: 32 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "3rem", fontWeight: 700, color: "var(--color-primary)", lineHeight: 1 } }, campaignStatus ? campaignStatus.completedCount + campaignStatus.failedCount : 0, /* @__PURE__ */ React.createElement("span", { style: { fontSize: "1.5rem", color: "var(--color-text-muted)", marginLeft: 8 } }, "/ ", campaignStatus ? campaignStatus.totalCount : 0)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.9rem", color: "var(--color-text-muted)", marginTop: 8, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 } }, "Emails Processed")), campaignStatus?.items?.filter((i) => i.status === "FAILED").length > 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "left", marginTop: 40, marginBottom: 32 } }, /* @__PURE__ */ React.createElement("h3", { style: { color: "#ef4444", marginBottom: 16 } }, "Errors"), /* @__PURE__ */ React.createElement("div", { style: { maxHeight: 300, overflowY: "auto", background: "#fef2f2", padding: 16, borderRadius: 8, border: "1px solid #fecaca" } }, campaignStatus.items.filter((i) => i.status === "FAILED").map((i, idx) => /* @__PURE__ */ React.createElement("div", { key: idx, style: { padding: 12, borderBottom: "1px solid #fecaca", color: "#991b1b" } }, /* @__PURE__ */ React.createElement("strong", null, "Student ID ", i.studentId, ":"), " ", i.errorMessage)))), campaignStatus && ["COMPLETED", "FAILED", "COMPLETED_WITH_ERRORS"].includes(campaignStatus.status) && /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: reset, style: { padding: "12px 24px", fontSize: "1.1rem" } }, "Start New Campaign")));
+};
+const MassInvoicesPage = () => {
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [targetMode, setTargetMode] = useState("students");
+  const [targetClassrooms, setTargetClassrooms] = useState(/* @__PURE__ */ new Set());
+  const [students, setStudents] = useState([]);
+  const [selectedStudents, setSelectedStudents] = useState(/* @__PURE__ */ new Set());
+  const fetchedStudentsRef = useRef(/* @__PURE__ */ new Map());
+  const [search, setSearch] = useState("");
+  const [classrooms, setClassrooms] = useState([]);
+  const [selectedClassroomId, setSelectedClassroomId] = useState("");
+  const [lineItems, setLineItems] = useState([]);
+  const [reckonItems, setReckonItems] = useState([]);
+  const [loadingReckonItems, setLoadingReckonItems] = useState(false);
+  const [showAddItemDropdown, setShowAddItemDropdown] = useState(false);
+  const [sendOnIssue, setSendOnIssue] = useState(false);
+  const [templateId, setTemplateId] = useState("");
+  const [templates, setTemplates] = useState([]);
+  const [batchJobId, setBatchJobId] = useState(null);
+  const [batchStatus, setBatchStatus] = useState(null);
+  const [polling, setPolling] = useState(false);
+  const pollInterval = useRef(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchDebouncer = useRef(null);
+  useEffect(() => {
+    api.get("/api/classrooms", { params: { col: "Id,name", limit: 150, filter: "Status eq 'Current'" } }).then((res) => setClassrooms(res.data?.data || res.data || [])).catch(() => {
+    });
+  }, []);
+  useEffect(() => {
+    if (sendOnIssue && templates.length === 0) {
+      api.get("/api/templates", { params: { filter: "type==email", col: "id,name" } }).then((res) => setTemplates(res.data?.data || res.data || [])).catch((err) => console.error("Failed to load templates:", err));
+    }
+  }, [sendOnIssue]);
+  useEffect(() => {
+    if (searchDebouncer.current) clearTimeout(searchDebouncer.current);
+    searchDebouncer.current = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 350);
+  }, [search]);
+  useEffect(() => {
+    setLoading(true);
+    const q = debouncedSearch.trim();
+    let filter = "status eq 'Enrolled'";
+    if (q) {
+      const escaped = q.replace(/'/g, "''");
+      const isAllDigits = /^\\d+$/.test(escaped);
+      const searchPart = isAllDigits ? `code eq '${escaped}';parentphone eq '${escaped}'` : `name con '${escaped}';classroom_name con '${escaped}'`;
+      filter = `${searchPart},${filter}`;
+    }
+    if (selectedClassroomId) {
+      filter = `${filter},ClassroomId eq ${selectedClassroomId}`;
+    }
+    api.get("/api/students", { params: { col: "Id,name,code,photo,classroom,classroom_name", limit: 2e3, filter } }).then((res) => {
+      const list = res.data?.data || res.data || [];
+      list.forEach((s) => fetchedStudentsRef.current.set(s.Id || s.id, s));
+      setStudents(list);
+    }).catch(() => {
+    }).finally(() => setLoading(false));
+  }, [debouncedSearch, selectedClassroomId]);
+  const toggleStudent = (id) => {
+    const next = new Set(selectedStudents);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedStudents(next);
+  };
+  const displayedStudents = useMemo(() => {
+    const result = [];
+    const seen = /* @__PURE__ */ new Set();
+    selectedStudents.forEach((id) => {
+      const s = fetchedStudentsRef.current.get(id);
+      if (s) {
+        result.push(s);
+        seen.add(id);
+      }
+    });
+    students.forEach((s) => {
+      const id = s.Id || s.id;
+      if (!seen.has(id)) {
+        result.push(s);
+        seen.add(id);
+      }
+    });
+    return result;
+  }, [students, selectedStudents]);
+  const loadReckonItems = async () => {
+    if (reckonItems.length > 0 || loadingReckonItems) return;
+    try {
+      setLoadingReckonItems(true);
+      const res = await api.get("/api/ReckonItems");
+      const data = res.data;
+      const list = Array.isArray(data) ? data : data.list || data.data || data.items || [];
+      setReckonItems(list);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingReckonItems(false);
+    }
+  };
+  const handleAddReckonItem = (item) => {
+    const desc = item.sale?.description || item.fullName || item.name || "-";
+    const price = parseFloat(item.sale?.priceGross || item.sale?.price || 0);
+    let maxLn = 0;
+    lineItems.forEach((li) => {
+      if (li.lineNumber > maxLn) maxLn = li.lineNumber;
+    });
+    setLineItems([...lineItems, {
+      internalId: Date.now() + Math.random(),
+      lineNumber: maxLn + 1,
+      itemId: item.id || "",
+      description: desc,
+      quantity: 1,
+      amount: price,
+      discount: null
+    }]);
+    setShowAddItemDropdown(false);
+  };
+  const updateLine = (internalId, field, val) => {
+    setLineItems(lineItems.map((l) => l.internalId === internalId ? { ...l, [field]: val } : l));
+  };
+  const removeLine = (internalId) => {
+    setLineItems(lineItems.filter((l) => l.internalId !== internalId));
+  };
+  const calculateTotal = () => {
+    let t = 0;
+    lineItems.forEach((l) => {
+      const q = parseFloat(l.quantity || 0);
+      const a = parseFloat(l.amount || 0);
+      const d = l.discount || 0;
+      const lineTotal = q * a;
+      t += lineTotal * (1 - d);
+    });
+    return t;
+  };
+  const startBatch = async () => {
+    if (targetMode === "students" && selectedStudents.size === 0) return alert("Select at least one student.");
+    if (targetMode === "classrooms" && targetClassrooms.size === 0) return alert("Select at least one classroom.");
+    if (lineItems.length === 0) return alert("Please add at least one line item.");
+    if (lineItems.some((l) => !l.itemId || l.itemId.trim() === "")) return alert("Some line items are missing an item id.");
+    if (lineItems.some((l) => parseFloat(l.quantity || 0) === 0)) return alert("Quantity cannot be zero for any line item.");
+    if (sendOnIssue && !templateId.trim()) return alert("Template ID is required to send emails.");
+    let confirmMsg = "";
+    if (targetMode === "students") confirmMsg = `Are you sure you want to issue invoices for ${selectedStudents.size} students?`;
+    else if (targetMode === "classrooms") confirmMsg = `Are you sure you want to issue invoices for all enrolled students in ${targetClassrooms.size} classrooms?`;
+    else confirmMsg = `Are you sure you want to issue invoices for ALL enrolled students?`;
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      setLoading(true);
+      const payload = {
+        targetMode,
+        students: targetMode === "students" ? Array.from(selectedStudents).map((id) => String(id)) : [],
+        classrooms: targetMode === "classrooms" ? Array.from(targetClassrooms).map((id) => String(id)) : [],
+        lineItems: lineItems.map((l) => ({
+          itemID: l.itemId,
+          quantity: Number(l.quantity),
+          unitPrice: Number(l.amount),
+          discountPercent: l.discount || 0
+        })),
+        sendOnIssue,
+        templateId: templateId.trim() || null
+      };
+      const res = await api.post("/api/invoices/batch", payload);
+      if (res.data?.batchJobId) {
+        setBatchJobId(res.data.batchJobId);
+        setStep(4);
+        setPolling(true);
+        pollStatus(res.data.batchJobId);
+      }
+    } catch (e) {
+      alert(e.response?.data?.message || "Failed to start batch job.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const pollStatus = async (id) => {
+    if (pollInterval.current) clearInterval(pollInterval.current);
+    const check = async () => {
+      try {
+        const res = await api.get(`/api/invoices/batch/${id}/status`);
+        setBatchStatus(res.data);
+        const s = res.data.status;
+        if (s === "COMPLETED" || s === "FAILED" || s === "COMPLETED_WITH_ERRORS") {
+          setPolling(false);
+          clearInterval(pollInterval.current);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    await check();
+    pollInterval.current = setInterval(check, 3e3);
+  };
+  useEffect(() => {
+    return () => {
+      if (pollInterval.current) clearInterval(pollInterval.current);
+    };
+  }, []);
+  const reset = () => {
+    setBatchJobId(null);
+    setBatchStatus(null);
+    setPolling(false);
+    if (pollInterval.current) clearInterval(pollInterval.current);
+    setSelectedStudents(/* @__PURE__ */ new Set());
+    setStep(1);
+  };
+  const toggleAll = (list) => {
+    const next = new Set(selectedStudents);
+    const allSelected = list.length > 0 && list.every((s) => next.has(s.Id || s.id));
+    list.forEach((s) => {
+      if (allSelected) next.delete(s.Id || s.id);
+      else next.add(s.Id || s.id);
+    });
+    setSelectedStudents(next);
+  };
+  return /* @__PURE__ */ React.createElement("div", { style: { padding: 24, maxWidth: 1e3, margin: "0 auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h2", { style: { margin: 0 } }, "Mass Invoice Issue"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 32, borderRadius: "50%", background: step >= 1 ? "var(--color-primary)" : "#e2e8f0", color: step >= 1 ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" } }, "1"), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 2, background: step >= 2 ? "var(--color-primary)" : "#e2e8f0", alignSelf: "center" } }), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 32, borderRadius: "50%", background: step >= 2 ? "var(--color-primary)" : "#e2e8f0", color: step >= 2 ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" } }, "2"), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 2, background: step >= 3 ? "var(--color-primary)" : "#e2e8f0", alignSelf: "center" } }), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 32, borderRadius: "50%", background: step >= 3 ? "var(--color-primary)" : "#e2e8f0", color: step >= 3 ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" } }, "3"))), step === 1 && /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 24, display: "flex", flexDirection: "column", height: "calc(100vh - 200px)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("h3", { style: { margin: 0, fontWeight: 700 } }, "Select Target"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setStep(2), disabled: targetMode === "students" && selectedStudents.size === 0 || targetMode === "classrooms" && targetClassrooms.size === 0 }, "Next Step ", /* @__PURE__ */ React.createElement(Icon, { name: "arrow-right", size: 16, style: { marginLeft: 8 } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, borderBottom: "1px solid var(--color-border)", paddingBottom: 16 } }, ["students", "classrooms", "all_enrolled"].map((mode) => /* @__PURE__ */ React.createElement("button", { key: mode, className: `btn ${targetMode === mode ? "btn-primary" : "btn-secondary"}`, onClick: () => setTargetMode(mode) }, mode === "students" && "Specific Students", mode === "classrooms" && "By Classroom(s)", mode === "all_enrolled" && "All Enrolled"))), targetMode === "students" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement("input", { type: "text", className: "form-input", placeholder: "Search students...", value: search, onChange: (e) => setSearch(e.target.value), style: { flex: 1 } }), /* @__PURE__ */ React.createElement("select", { className: "form-input", value: selectedClassroomId, onChange: (e) => setSelectedClassroomId(e.target.value), style: { width: 250 } }, /* @__PURE__ */ React.createElement("option", { value: "" }, "All Classrooms"), classrooms.map((c) => /* @__PURE__ */ React.createElement("option", { key: c.Id || c.id, value: c.Id || c.id }, c.name || c.Name)))), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", border: "1px solid var(--color-border)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: "1px solid var(--color-border)", background: "#f8fafc", fontWeight: 600, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-muted)" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: displayedStudents.length > 0 && displayedStudents.every((s) => selectedStudents.has(s.Id || s.id)), onChange: () => toggleAll(displayedStudents), style: { width: 18, height: 18, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("div", { style: { width: 40, flexShrink: 0 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, "Student Details (", selectedStudents.size, " selected)")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, overflowY: "auto" } }, loading && displayedStudents.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { padding: 20, textAlign: "center", color: "var(--color-text-muted)" } }, "Loading students...") : displayedStudents.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { padding: 20, textAlign: "center", color: "var(--color-text-muted)" } }, "No students found.") : displayedStudents.map((s) => {
+    const id = s.Id || s.id;
+    const isSelected = selectedStudents.has(id);
+    const photoUrl = s.photo || s.Photo;
+    return /* @__PURE__ */ React.createElement("div", { key: id, onClick: () => toggleStudent(id), style: { display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: "1px solid var(--color-border)", cursor: "pointer", background: isSelected ? "#f0fdf4" : "transparent" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: isSelected, readOnly: true, style: { width: 18, height: 18 } }), /* @__PURE__ */ React.createElement(Avatar, { name: s.name || s.Name || "Student", photoUrl, id: s.Id || s.id, size: 40, style: { flexShrink: 0 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, color: "var(--color-text)" } }, s.name || s.Name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("span", null, s.code || s.Code || id), s.classroom_name && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", null, "\u2022"), /* @__PURE__ */ React.createElement("span", null, s.classroom_name)))));
+  })))), targetMode === "classrooms" && /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", border: "1px solid var(--color-border)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: "1px solid var(--color-border)", background: "#f8fafc", fontWeight: 600, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-muted)" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: classrooms.length > 0 && classrooms.every((c) => targetClassrooms.has(c.Id || c.id)), onChange: () => {
+    const next = new Set(targetClassrooms);
+    const allSelected = classrooms.length > 0 && classrooms.every((c) => next.has(c.Id || c.id));
+    classrooms.forEach((c) => {
+      if (allSelected) next.delete(c.Id || c.id);
+      else next.add(c.Id || c.id);
+    });
+    setTargetClassrooms(next);
+  }, style: { width: 18, height: 18, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, "Select Classrooms (", targetClassrooms.size, " selected)")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, overflowY: "auto" } }, classrooms.map((c) => {
+    const id = c.Id || c.id;
+    const isSelected = targetClassrooms.has(id);
+    return /* @__PURE__ */ React.createElement("div", { key: id, onClick: () => {
+      const next = new Set(targetClassrooms);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setTargetClassrooms(next);
+    }, style: { display: "flex", alignItems: "center", gap: 16, padding: "16px", borderBottom: "1px solid var(--color-border)", cursor: "pointer", background: isSelected ? "#f0fdf4" : "transparent" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: isSelected, readOnly: true, style: { width: 18, height: 18 } }), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, fontSize: "1.05rem", color: "var(--color-text)" } }, c.name || c.Name));
+  }))), targetMode === "all_enrolled" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 48, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, maxWidth: 500 } }, /* @__PURE__ */ React.createElement("div", { style: { color: "#16a34a", marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Icon, { name: "users", size: 48 })), /* @__PURE__ */ React.createElement("h3", { style: { margin: "0 0 8px 0", color: "#166534", fontSize: "1.5rem" } }, "All Enrolled Students"), /* @__PURE__ */ React.createElement("div", { style: { color: "#15803d", fontSize: "1.1rem" } }, "This will dynamically issue an invoice to ", /* @__PURE__ */ React.createElement("b", null, "every student"), ' whose status is currently "Enrolled".')))), step === 2 && /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 32 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h3", { style: { margin: 0, fontWeight: 700 } }, "Line Items"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: () => setStep(1) }, "Back"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setStep(3), disabled: lineItems.length === 0 }, "Next Step ", /* @__PURE__ */ React.createElement(Icon, { name: "arrow-right", size: 16, style: { marginLeft: 8 } })))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "minmax(120px, 1fr) 80px 100px 90px 40px", gap: 8, fontSize: "0.85rem", fontWeight: 600, color: "var(--color-text-muted)", marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", null, "Item Description"), /* @__PURE__ */ React.createElement("div", null, "Quantity"), /* @__PURE__ */ React.createElement("div", null, "Amount (ea)"), /* @__PURE__ */ React.createElement("div", null, "Discount"), /* @__PURE__ */ React.createElement("div", null)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 } }, lineItems.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: 24, textAlign: "center", color: "var(--color-text-muted)", background: "#f8fafc", borderRadius: 8 } }, "No line items added yet."), lineItems.map((l) => /* @__PURE__ */ React.createElement("div", { key: l.internalId, style: { display: "grid", gridTemplateColumns: "minmax(120px, 1fr) 80px 100px 90px 40px", gap: 8, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 12px", background: "#f9f9f9", border: "1px solid var(--color-border)", borderRadius: 6, color: "var(--color-text-muted)", wordBreak: "break-word", whiteSpace: "normal", minWidth: 0 } }, l.description), /* @__PURE__ */ React.createElement("input", { type: "number", className: "form-input", value: l.quantity, onChange: (e) => updateLine(l.internalId, "quantity", e.target.value), min: "1", step: "0.5" }), /* @__PURE__ */ React.createElement("input", { type: "number", className: "form-input", value: l.amount, onChange: (e) => updateLine(l.internalId, "amount", e.target.value) }), /* @__PURE__ */ React.createElement("select", { className: "form-input", value: l.discount || "", onChange: (e) => updateLine(l.internalId, "discount", e.target.value ? parseFloat(e.target.value) : null) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "0%"), /* @__PURE__ */ React.createElement("option", { value: "0.05" }, "5%"), /* @__PURE__ */ React.createElement("option", { value: "0.1" }, "10%"), /* @__PURE__ */ React.createElement("option", { value: "0.25" }, "25%")), /* @__PURE__ */ React.createElement(Icon, { name: "trash-2", size: 18, color: "red", style: { cursor: "pointer", justifySelf: "center" }, onClick: () => removeLine(l.internalId) })))), /* @__PURE__ */ React.createElement("div", { style: { position: "relative", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: () => {
+    loadReckonItems();
+    setShowAddItemDropdown(!showAddItemDropdown);
+  } }, /* @__PURE__ */ React.createElement(Icon, { name: "plus", size: 16 }), " Add Line Item"), showAddItemDropdown && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: "100%", left: 0, marginTop: 8, background: "#fff", border: "1px solid var(--color-border)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 100, width: 400, maxHeight: 300, overflowY: "auto" } }, loadingReckonItems ? /* @__PURE__ */ React.createElement("div", { style: { padding: 16, color: "var(--color-text-muted)", textAlign: "center" } }, "Loading items...") : reckonItems.map((item) => {
+    const desc = item.sale?.description || item.fullName || item.name || "-";
+    return /* @__PURE__ */ React.createElement("div", { key: item.id, style: { padding: "12px 16px", borderBottom: "1px solid var(--color-border-light)", cursor: "pointer" }, onClick: () => handleAddReckonItem(item) }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, desc), item.sale?.priceGross && /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: 4 } }, "$", parseFloat(item.sale.priceGross).toFixed(2)));
+  })))), step === 3 && /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 32 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h3", { style: { margin: 0, fontWeight: 700 } }, "Summary & Options"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: () => setStep(2) }, "Back"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: startBatch, disabled: loading || targetMode === "students" && selectedStudents.size === 0 || targetMode === "classrooms" && targetClassrooms.size === 0 }, loading ? "Starting..." : "Start Batch Job"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { padding: 24, background: "#f8fafc", borderRadius: 8, border: "1px solid var(--color-border)" } }, /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: sendOnIssue ? 16 : 0, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: sendOnIssue, onChange: (e) => setSendOnIssue(e.target.checked), style: { width: 20, height: 20 } }), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600, fontSize: "1.05rem" } }, "Send email to student on issue")), sendOnIssue && /* @__PURE__ */ React.createElement("div", { style: { marginLeft: 32 } }, /* @__PURE__ */ React.createElement("label", { style: { display: "block", marginBottom: 6, fontSize: "0.85rem", fontWeight: 600 } }, "Email Template"), /* @__PURE__ */ React.createElement("select", { className: "form-input", value: templateId, onChange: (e) => setTemplateId(e.target.value), style: { width: "100%", maxWidth: 400 } }, /* @__PURE__ */ React.createElement("option", { value: "" }, "Select template..."), templates.map((t) => /* @__PURE__ */ React.createElement("option", { key: t.Id || t.id, value: t.Id || t.id }, t.Name || t.name))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: 8 } }, "(Leave blank to use the default reminder template)"))), /* @__PURE__ */ React.createElement("div", { style: { padding: 24, background: "var(--color-primary)", color: "white", borderRadius: 8 } }, /* @__PURE__ */ React.createElement("h3", { style: { margin: "0 0 16px 0", fontWeight: 700, color: "white" } }, "Batch Summary"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12, fontSize: "1.1rem" } }, /* @__PURE__ */ React.createElement("div", null, "Target: ", /* @__PURE__ */ React.createElement("strong", null, targetMode === "students" ? `${selectedStudents.size} Specific Students` : targetMode === "classrooms" ? `${targetClassrooms.size} Classrooms (Enrolled only)` : "All Enrolled Students")), /* @__PURE__ */ React.createElement("div", null, "Line Items per Invoice: ", /* @__PURE__ */ React.createElement("strong", null, lineItems.length)))))), step === 4 && batchJobId && /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 48, textAlign: "center" } }, /* @__PURE__ */ React.createElement("h2", { style: { marginBottom: 16 } }, "Batch Job #", batchJobId), (() => {
+    const isDone = batchStatus && ["COMPLETED", "FAILED", "COMPLETED_WITH_ERRORS"].includes(batchStatus.status);
+    const pct = batchStatus?.totalCount ? Math.round((batchStatus.completedCount + batchStatus.failedCount) / batchStatus.totalCount * 100) : 0;
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 24, fontWeight: 700, fontSize: "1.2rem", color: isDone ? batchStatus.status === "COMPLETED" ? "#50AC55" : "#f97316" : "#3b82f6" } }, "Status: ", batchStatus?.status || "STARTING..."), /* @__PURE__ */ React.createElement("div", { style: { background: "#f1f5f9", height: 24, borderRadius: 12, overflow: "hidden", marginBottom: 32, border: "1px solid var(--color-border)" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", width: `${pct}%`, background: "#50AC55", transition: "width 0.3s ease-out" } })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", gap: 48, marginBottom: 40 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "2.5rem", fontWeight: 800 } }, batchStatus?.totalCount || 0), /* @__PURE__ */ React.createElement("div", { style: { color: "var(--color-text-muted)", fontWeight: 600 } }, "Total")), /* @__PURE__ */ React.createElement("div", { style: { color: "#50AC55" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "2.5rem", fontWeight: 800 } }, batchStatus?.completedCount || 0), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, "Success")), /* @__PURE__ */ React.createElement("div", { style: { color: "#ef4444" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "2.5rem", fontWeight: 800 } }, batchStatus?.failedCount || 0), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, "Failed"))), isDone && /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: reset }, "Issue Another Batch"), batchStatus?.items?.filter((i) => i.status === "FAILED").length > 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "left", marginTop: 40 } }, /* @__PURE__ */ React.createElement("h3", { style: { color: "#ef4444", marginBottom: 16 } }, "Errors"), /* @__PURE__ */ React.createElement("div", { style: { maxHeight: 300, overflowY: "auto", background: "#fef2f2", padding: 16, borderRadius: 8, border: "1px solid #fecaca" } }, batchStatus.items.filter((i) => i.status === "FAILED").map((i) => /* @__PURE__ */ React.createElement("div", { key: i.invoiceItemId || i.studentId, style: { marginBottom: 8, fontSize: "0.9rem", color: "#991b1b" } }, /* @__PURE__ */ React.createElement("strong", null, "Student ", i.studentId, ":"), " ", i.errorMessage)))));
+  })()));
+};
+const SendRemindersPage = () => {
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [targetMode, setTargetMode] = useState("students");
+  const [targetClassrooms, setTargetClassrooms] = useState(/* @__PURE__ */ new Set());
+  const [students, setStudents] = useState([]);
+  const [selectedStudents, setSelectedStudents] = useState(/* @__PURE__ */ new Set());
+  const [search, setSearch] = useState("");
+  const [classrooms, setClassrooms] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [templateId, setTemplateId] = useState("");
+  const [templates, setTemplates] = useState([]);
+  const [completed, setCompleted] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchDebouncer = useRef(null);
+  const observer = useRef();
+  const fetchedStudentsRef = useRef(/* @__PURE__ */ new Map());
+  useEffect(() => {
+    api.get("/api/classrooms", { params: { col: "Id,name", limit: 150, filter: "Status eq 'Current'" } }).then((res) => setClassrooms(res.data?.data || res.data || [])).catch(() => {
+    });
+    api.get("/api/templates", { params: { filter: "type==email", col: "id,name" } }).then((res) => setTemplates(res.data?.data || res.data || [])).catch((err) => console.error("Failed to load templates:", err));
+  }, []);
+  useEffect(() => {
+    if (searchDebouncer.current) clearTimeout(searchDebouncer.current);
+    searchDebouncer.current = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 350);
+  }, [search]);
+  useEffect(() => {
+    setStudents([]);
+    setPage(1);
+    setHasMore(true);
+  }, [debouncedSearch]);
+  useEffect(() => {
+    if (targetMode !== "students") return;
+    let active = true;
+    const loadStudents = async () => {
+      if (!hasMore && page !== 1) return;
+      if (page > 1) setLoadingMore(true);
+      else setLoading(true);
+      try {
+        const q = debouncedSearch.trim();
+        let filter = "";
+        if (q) {
+          const escaped = q.replace(/'/g, "''");
+          const isAllDigits = /^\d+$/.test(escaped);
+          const searchPart = isAllDigits ? `code eq '${escaped}'` : `name con '${escaped}';classroom_name con '${escaped}'`;
+          filter = searchPart;
+        }
+        const res = await api.get("/api/students/balances", { params: { limit: 20, page, filter } });
+        if (!active) return;
+        const fetched = Array.isArray(res.data) ? res.data : res.data?.data || [];
+        const totalHeader = res.headers["x-total-count"];
+        if (totalHeader) setTotalCount(parseInt(totalHeader, 10));
+        fetched.forEach((s) => fetchedStudentsRef.current.set(s.Id || s.id, s));
+        setStudents((prev) => page === 1 ? fetched : [...prev, ...fetched]);
+        if (fetched.length < 20) {
+          setHasMore(false);
+        }
+      } catch (err) {
+        console.error(err);
+        if (active) setHasMore(false);
+      } finally {
+        if (active) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
+      }
+    };
+    loadStudents();
+    return () => {
+      active = false;
+    };
+  }, [page, debouncedSearch, targetMode]);
+  const lastElementRef = useCallback((node) => {
+    if (loading || loadingMore) return;
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage((prev) => prev + 1);
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, [loading, loadingMore, hasMore]);
+  const toggleStudent = (id) => {
+    const next = new Set(selectedStudents);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedStudents(next);
+  };
+  const displayedStudents = useMemo(() => {
+    const result = [];
+    const seen = /* @__PURE__ */ new Set();
+    selectedStudents.forEach((id) => {
+      const s = fetchedStudentsRef.current.get(id);
+      if (s) {
+        result.push(s);
+        seen.add(id);
+      }
+    });
+    students.forEach((s) => {
+      const id = s.Id || s.id;
+      if (!seen.has(id)) {
+        result.push(s);
+        seen.add(id);
+      }
+    });
+    return result;
+  }, [students, selectedStudents]);
+  const toggleAllStudents = () => {
+    const next = new Set(selectedStudents);
+    const allSelected = displayedStudents.length > 0 && displayedStudents.every((s) => next.has(s.id || s.Id));
+    displayedStudents.forEach((s) => {
+      if (allSelected) next.delete(s.id || s.Id);
+      else next.add(s.id || s.Id);
+    });
+    setSelectedStudents(next);
+  };
+  const startBatch = async () => {
+    if (targetMode === "students" && selectedStudents.size === 0) return alert("Select at least one student.");
+    if (targetMode === "classrooms" && targetClassrooms.size === 0) return alert("Select at least one classroom.");
+    let confirmMsg = "";
+    if (targetMode === "students") confirmMsg = `Are you sure you want to enqueue reminders for ${selectedStudents.size} students?`;
+    else if (targetMode === "classrooms") confirmMsg = `Are you sure you want to enqueue reminders for enrolled students in ${targetClassrooms.size} classrooms (with outstanding balances)?`;
+    else confirmMsg = `Are you sure you want to enqueue reminders for ALL enrolled students (with outstanding balances)?`;
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      setLoading(true);
+      let finalStudentIds = [];
+      if (targetMode === "students") {
+        finalStudentIds = Array.from(selectedStudents).filter((id) => {
+          const s = fetchedStudentsRef.current.get(id);
+          return s && parseFloat(s.balance || 0) > 1e-3;
+        }).map((id) => parseInt(id, 10));
+      } else {
+        let filter = "status eq 'Enrolled'";
+        if (targetMode === "classrooms") {
+          const cIds = Array.from(targetClassrooms).join(",");
+          filter += `,ClassroomId in (${cIds})`;
+        }
+        const res = await api.get("/api/students/balances", { params: { limit: 5e3, filter } });
+        const list = res.data?.data || res.data || [];
+        finalStudentIds = list.filter((s) => parseFloat(s.balance || 0) > 1e-3).map((s) => parseInt(s.Id || s.id, 10));
+      }
+      if (finalStudentIds.length === 0) {
+        alert("No students found with an outstanding balance for the selected target.");
+        setLoading(false);
+        return;
+      }
+      const payload = {
+        studentIds: finalStudentIds,
+        templateid: templateId.trim() || null
+      };
+      await api.post("/api/students/reminders/enqueue", payload);
+      setCompleted(true);
+      setStep(3);
+    } catch (e) {
+      alert(e.response?.data?.message || "Failed to enqueue reminders.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const reset = () => {
+    setCompleted(false);
+    setSelectedStudents(/* @__PURE__ */ new Set());
+    setTargetClassrooms(/* @__PURE__ */ new Set());
+    setStep(1);
+  };
+  return /* @__PURE__ */ React.createElement("div", { style: { padding: 24, maxWidth: 1e3, margin: "0 auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h2", { style: { margin: 0 } }, "Send Reminders"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 32, borderRadius: "50%", background: step >= 1 ? "var(--color-primary)" : "#e2e8f0", color: step >= 1 ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" } }, "1"), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 2, background: step >= 2 ? "var(--color-primary)" : "#e2e8f0", alignSelf: "center" } }), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 32, borderRadius: "50%", background: step >= 2 ? "var(--color-primary)" : "#e2e8f0", color: step >= 2 ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" } }, "2"), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 2, background: step >= 3 ? "var(--color-primary)" : "#e2e8f0", alignSelf: "center" } }), /* @__PURE__ */ React.createElement("div", { style: { width: 32, height: 32, borderRadius: "50%", background: step >= 3 ? "var(--color-primary)" : "#e2e8f0", color: step >= 3 ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" } }, "3"))), step === 1 && /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 24, display: "flex", flexDirection: "column", height: "calc(100vh - 200px)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("h3", { style: { margin: 0, fontWeight: 700 } }, "Select Target"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setStep(2), disabled: targetMode === "students" && selectedStudents.size === 0 || targetMode === "classrooms" && targetClassrooms.size === 0 }, "Next Step ", /* @__PURE__ */ React.createElement(Icon, { name: "arrow-right", size: 16, style: { marginLeft: 8 } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, borderBottom: "1px solid var(--color-border)", paddingBottom: 16, overflowX: "auto", flexWrap: "wrap" } }, ["students", "classrooms", "all_enrolled"].map((mode) => /* @__PURE__ */ React.createElement("button", { key: mode, className: `btn ${targetMode === mode ? "btn-primary" : "btn-secondary"}`, onClick: () => setTargetMode(mode), style: { whiteSpace: "nowrap" } }, mode === "students" && "Specific Students", mode === "classrooms" && "By Classroom(s) (with outstanding balance)", mode === "all_enrolled" && "All Enrolled (with outstanding balance)"))), targetMode === "students" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement("input", { type: "text", className: "form-input", placeholder: "Search students...", value: search, onChange: (e) => setSearch(e.target.value), style: { flex: 1 } })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", border: "1px solid var(--color-border)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: "1px solid var(--color-border)", background: "#f8fafc", fontWeight: 600, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-muted)" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: displayedStudents.length > 0 && displayedStudents.every((s) => selectedStudents.has(s.Id || s.id)), onChange: toggleAllStudents, style: { width: 18, height: 18, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("div", { style: { width: 40, flexShrink: 0 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, "Student Details (", selectedStudents.size, " selected)"), /* @__PURE__ */ React.createElement("div", { style: { width: 100, textAlign: "right" } }, "Balance")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, overflowY: "auto" } }, loading && page === 1 && displayedStudents.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { padding: 20, textAlign: "center", color: "var(--color-text-muted)" } }, "Loading students...") : displayedStudents.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { padding: 20, textAlign: "center", color: "var(--color-text-muted)" } }, "No students found.") : displayedStudents.map((s, idx) => {
+    const id = s.Id || s.id;
+    const isSelected = selectedStudents.has(id);
+    const photoUrl = s.photo || s.Photo;
+    const isLast = idx === displayedStudents.length - 1;
+    const balance = parseFloat(s.balance || 0);
+    return /* @__PURE__ */ React.createElement("div", { key: id, ref: isLast ? lastElementRef : null, onClick: () => toggleStudent(id), style: { display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: "1px solid var(--color-border)", cursor: "pointer", background: isSelected ? "#f0fdf4" : "transparent" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: isSelected, readOnly: true, style: { width: 18, height: 18 } }), /* @__PURE__ */ React.createElement(Avatar, { name: s.name || s.Name || "Student", photoUrl, id: s.Id || s.id, size: 40, style: { flexShrink: 0 } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, color: "var(--color-text)" } }, s.name || s.Name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("span", null, s.code || s.Code || id), s.classroom_name && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", null, "\u2022"), /* @__PURE__ */ React.createElement("span", null, s.classroom_name)))), /* @__PURE__ */ React.createElement("div", { style: { width: 100, textAlign: "right", fontWeight: 700, color: balance > 0 ? "#ef4444" : "#16a34a" } }, "$", balance.toFixed(2)));
+  }), loadingMore && /* @__PURE__ */ React.createElement("div", { style: { padding: 16, textAlign: "center", color: "var(--color-text-muted)" } }, "Loading more...")))), targetMode === "classrooms" && /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", border: "1px solid var(--color-border)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: "1px solid var(--color-border)", background: "#f8fafc", fontWeight: 600, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-muted)" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: classrooms.length > 0 && classrooms.every((c) => targetClassrooms.has(c.Id || c.id)), onChange: () => {
+    const next = new Set(targetClassrooms);
+    const allSelected = classrooms.length > 0 && classrooms.every((c) => next.has(c.Id || c.id));
+    classrooms.forEach((c) => {
+      if (allSelected) next.delete(c.Id || c.id);
+      else next.add(c.Id || c.id);
+    });
+    setTargetClassrooms(next);
+  }, style: { width: 18, height: 18, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, "Select Classrooms (", targetClassrooms.size, " selected)")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, overflowY: "auto" } }, classrooms.map((c) => {
+    const id = c.Id || c.id;
+    const isSelected = targetClassrooms.has(id);
+    return /* @__PURE__ */ React.createElement("div", { key: id, onClick: () => {
+      const next = new Set(targetClassrooms);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setTargetClassrooms(next);
+    }, style: { display: "flex", alignItems: "center", gap: 16, padding: "16px", borderBottom: "1px solid var(--color-border)", cursor: "pointer", background: isSelected ? "#f0fdf4" : "transparent" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: isSelected, readOnly: true, style: { width: 18, height: 18 } }), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, fontSize: "1.05rem", color: "var(--color-text)" } }, c.name || c.Name));
+  }))), targetMode === "all_enrolled" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 48, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, maxWidth: 500 } }, /* @__PURE__ */ React.createElement("div", { style: { color: "#16a34a", marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Icon, { name: "users", size: 48 })), /* @__PURE__ */ React.createElement("h3", { style: { margin: "0 0 8px 0", color: "#166534", fontSize: "1.5rem" } }, "All Enrolled Students"), /* @__PURE__ */ React.createElement("div", { style: { color: "#15803d", fontSize: "1.1rem" } }, "This will dynamically fetch all enrolled students and enqueue reminders.", /* @__PURE__ */ React.createElement("b", null, " The system will safely skip any student that does not have an outstanding invoice balance."))))), step === 2 && /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 32 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h3", { style: { margin: 0, fontWeight: 700 } }, "Summary & Options"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: () => setStep(1), disabled: loading }, "Back"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: startBatch, disabled: loading || targetMode === "students" && selectedStudents.size === 0 || targetMode === "classrooms" && targetClassrooms.size === 0 }, loading ? "Enqueueing..." : "Enqueue Reminders"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { padding: 24, background: "#f8fafc", borderRadius: 8, border: "1px solid var(--color-border)" } }, /* @__PURE__ */ React.createElement("label", { style: { display: "block", marginBottom: 6, fontSize: "0.85rem", fontWeight: 600 } }, "Email Template"), /* @__PURE__ */ React.createElement("select", { className: "form-input", value: templateId, onChange: (e) => setTemplateId(e.target.value), style: { width: "100%", maxWidth: 400 } }, /* @__PURE__ */ React.createElement("option", { value: "" }, "Select template..."), templates.map((t) => /* @__PURE__ */ React.createElement("option", { key: t.Id || t.id, value: t.Id || t.id }, t.Name || t.name))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: 8 } }, "(Leave blank to use the default reminder template)")), /* @__PURE__ */ React.createElement("div", { style: { padding: 24, background: "var(--color-primary)", color: "white", borderRadius: 8 } }, /* @__PURE__ */ React.createElement("h3", { style: { margin: "0 0 16px 0", fontWeight: 700, color: "white" } }, "Queue Summary"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12, fontSize: "1.1rem" } }, /* @__PURE__ */ React.createElement("div", null, "Target: ", /* @__PURE__ */ React.createElement("strong", null, targetMode === "students" ? `${selectedStudents.size} Specific Students` : targetMode === "classrooms" ? `${targetClassrooms.size} Classrooms (Enrolled only)` : "All Enrolled Students")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.9rem", opacity: 0.9 } }, "* Only students with outstanding balances will receive a reminder. Students without balances will be skipped."))))), step === 3 && completed && /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 48, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 80, height: 80, borderRadius: "50%", background: "#dcfce7", color: "#16a34a", marginBottom: 24 } }, /* @__PURE__ */ React.createElement(Icon, { name: "check", size: 40 })), /* @__PURE__ */ React.createElement("h2", { style: { marginBottom: 16 } }, "Reminders Enqueued Successfully"), /* @__PURE__ */ React.createElement("p", { style: { color: "var(--color-text-muted)", fontSize: "1.1rem", marginBottom: 32, maxWidth: 400, margin: "0 auto 32px" } }, "The reminders have been added to the background queue. The system will process them shortly and deliver emails and push notifications to the respective parents."), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: reset }, "Issue More Reminders")));
 };
 const PaymentsLogPage = () => {
   const [loading, setLoading] = useState(true);

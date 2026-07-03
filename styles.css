@@ -4073,3 +4073,33 @@ body.login-page #root {
 .ck.ck-powered-by {
     display: none !important;
 }
+
+/* Sidebar Tooltip Submenu */
+.sidebar-item-group {
+    position: relative;
+}
+
+.sidebar-tooltip-menu {
+    display: none;
+    position: absolute;
+    left: calc(100% - 10px);
+    top: 0;
+    background-color: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 0.5rem;
+    z-index: 999999;
+    min-width: 220px;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.sidebar-item-group:hover .sidebar-tooltip-menu {
+    display: block;
+}
+
+.sidebar-tooltip-menu .sidebar-item {
+    margin: 0;
+    padding: 0.5rem 1rem;
+    white-space: nowrap;
+}
