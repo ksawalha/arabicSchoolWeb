@@ -2282,7 +2282,7 @@ const AttendanceTab = ({ studentId }) => {
             // fallback to filter param if backend uses standard TeacherAttendance-style generic filter
             try {
                 const res = await api.get('/api/studentAttendance/export', {
-                    params: { filter: `StudentId eq '${studentId}'`, orderby: 'date desc' },
+                    params: { filters: `StudentId eq '${studentId}'`, orderby: 'date desc' },
                     responseType: 'blob'
                 });
                 const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -5238,7 +5238,7 @@ const UserEditModal = ({ user, onClose, onSaved }) => {
         if (reset) { setAttLoading(true); setAttHasMore(true); }
         else { setAttLoadingMore(true); }
 
-        api.get('/api/teacherAttendance', { params: { filter: `TeacherId eq '${userId}'`, orderby: sortAsc ? 'date asc' : 'date desc', l: currentLoaded } })
+        api.get('/api/teacherAttendance', { params: { filters: `TeacherId eq '${userId}'`, orderby: sortAsc ? 'date asc' : 'date desc', l: currentLoaded } })
             .then(res => {
                 const data = res.data;
                 const list = Array.isArray(data) ? data : (data?.data || data?.records || []);
@@ -5398,7 +5398,7 @@ const UserEditModal = ({ user, onClose, onSaved }) => {
         try {
             const res = await api.get(`/api/teacherAttendance/export`, {
                 params: {
-                    filter: `TeacherId eq '${userId}'`,
+                    filters: `TeacherId eq '${userId}'`,
                     orderby: attSortAsc ? 'date asc' : 'date desc'
                 },
                 responseType: 'blob'
@@ -6245,7 +6245,7 @@ const ClassroomEditModal = ({ classroom, templateId, onClose, onSaved }) => {
 
         // 3) Load all current teachers
         promises.push(
-            api.get('/api/users', { params: { filter: "Status eq 'Current'", col: 'id,name,photo', limit: 50 } }).then(res => {
+            api.get('/api/users', { params: { filters: "Status eq 'Current'", col: 'id,name,photo', limit: 50 } }).then(res => {
                 const data = res.data?.data || res.data || [];
                 setAllTeachers(Array.isArray(data) ? data.map(t => ({ id: t.Id || t.id, name: t.name || t.Name || `${t.FirstName || ''} ${t.LastName || ''}`.trim(), photo: t.photo || t.Photo || '' })) : []);
             }).catch(() => { }).finally(() => setLoadingTeachers(false))
@@ -6645,7 +6645,7 @@ const MoveStudentsView = ({ classroomId, classroomName, students, onClose, onDon
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
-        api.get('/api/classrooms', { params: { col: 'id,name', filter: "status eq 'Current'", limit: 150 } })
+        api.get('/api/classrooms', { params: { col: 'id,name', filters: "status eq 'Current'", limit: 150 } })
             .then(res => { const d = Array.isArray(res.data) ? res.data : (res.data?.data || []); setClassrooms(d.filter(c => (c.id || c.Id) != classroomId)); })
             .catch(() => { }).finally(() => setLoadingC(false));
     }, []);
@@ -7159,10 +7159,10 @@ const StudentReportsView = ({ studentId, studentName, studentCode, photoUrl, onE
         try {
             const [resVisible, resHidden] = await Promise.all([
                 api.get('/api/getReports/user', {
-                    params: { studentid: studentId, l: 0, filter: "show eq '1'", orderBy: 'date DESC' }
+                    params: { studentid: studentId, l: 0, filters: "show eq '1'", orderBy: 'date DESC' }
                 }).catch(() => ({ data: [] })),
                 api.get('/api/getReports/user', {
-                    params: { studentid: studentId, l: 0, filter: "show eq '0'", orderBy: 'date DESC' }
+                    params: { studentid: studentId, l: 0, filters: "show eq '0'", orderBy: 'date DESC' }
                 }).catch(() => ({ data: [] }))
             ]);
 
@@ -7940,7 +7940,7 @@ const TemplatePickerList = ({ onSelect }) => {
     const [templates, setTemplates] = useState([]);
     const [loading, setLoading] = useState(true);
     useEffect(() => {
-        api.get('/api/classrooms', { params: { filter: "Status eq 'Template'", limit: 100 } }).then(res => {
+        api.get('/api/classrooms', { params: { filters: "Status eq 'Template'", limit: 100 } }).then(res => {
             let data = [];
             if (Array.isArray(res.data)) data = res.data;
             else data = res.data?.data || res.data?.classrooms || [];
@@ -8915,7 +8915,7 @@ const FeedPostFormScreen = ({ postId, onClose, onSaved }) => {
         setLoading(true);
         setLoadError('');
         try {
-            const classRes = await api.get('/api/classrooms', { params: { col: 'id,name', filter: "status eq 'Current'" } });
+            const classRes = await api.get('/api/classrooms', { params: { col: 'id,name', filters: "status eq 'Current'" } });
             try {
                 const hPub = classRes.headers['x-public'] || classRes.headers['X-Public'] || classRes.headers['X-public'];
                 const isPubHeader = hPub !== undefined ? String(hPub).toLowerCase() === 'true' : false;
@@ -9641,7 +9641,7 @@ const FeedPage = () => {
 
     const fetchClassrooms = async () => {
         try {
-            const res = await api.get('/api/classrooms', { params: { col: 'id,name', filter: "status eq 'Current'" } });
+            const res = await api.get('/api/classrooms', { params: { col: 'id,name', filters: "status eq 'Current'" } });
             const root = res.data?.data || res.data?.items || res.data?.results || res.data || [];
             const list = Array.isArray(root) ? root : [];
             const normalized = list.map((c) => ({ id: Number(c.id || c.Id || 0), name: c.name || c.Name || '' })).filter(c => c.id);
@@ -10369,7 +10369,7 @@ const CalendarPage = () => {
         const role = String(Auth.getUser()?.role || '').trim().toLowerCase();
         setIsAdmin(role === 'admin');
 
-        api.get('/api/classrooms', { params: { col: 'id,name', filter: "status eq 'Current'" } })
+        api.get('/api/classrooms', { params: { col: 'id,name', filters: "status eq 'Current'" } })
             .then(classRes => {
                 const classesRaw = classRes.data?.data || classRes.data?.items || classRes.data?.results || classRes.data || [];
                 const classList = (Array.isArray(classesRaw) ? classesRaw : [])
@@ -10431,7 +10431,7 @@ const CalendarPage = () => {
         try {
             const [termsRes, classRes] = await Promise.all([
                 api.get('/api/options', { params: { t: 'terms' } }),
-                api.get('/api/classrooms', { params: { col: 'id,name', filter: "status eq 'Current'" } }),
+                api.get('/api/classrooms', { params: { col: 'id,name', filters: "status eq 'Current'" } }),
             ]);
 
             const termsListRaw = Array.isArray(termsRes.data) ? termsRes.data : [];
@@ -11111,7 +11111,7 @@ const SettingsPage = () => {
     const loadClassrooms = async () => {
         setLoadingClassrooms(true); setClassroomsError(null);
         try {
-            const res = await api.get('/api/classrooms', { params: { col: 'id,name', filter: "Status eq 'Current'", limit: 100 } });
+            const res = await api.get('/api/classrooms', { params: { col: 'id,name', filters: "Status eq 'Current'", limit: 100 } });
             let list = res.data?.data || res.data?.classrooms || res.data || [];
             if (!Array.isArray(list)) list = [];
             setClassrooms(list.map(c => ({ id: c.Id || c.id, name: c.Name || c.name })).filter(c => c.id && c.name));
@@ -12653,7 +12653,19 @@ const DashboardLayout = ({ onLogout }) => {
 // ═══════════════════════════════════════════
 
 const EmailCampaignPage = () => {
-    const [step, setStep] = useState(1);
+    const [step, setStep] = useState(0);
+    const [campaignsList, setCampaignsList] = useState([]);
+    const [loadingList, setLoadingList] = useState(false);
+
+    useEffect(() => {
+        if (step === 0) {
+            setLoadingList(true);
+            api.get('/api/campaigns/email')
+                .then(res => setCampaignsList(res.data.data || []))
+                .catch(err => alert('Failed to load campaigns'))
+                .finally(() => setLoadingList(false));
+        }
+    }, [step]);
 
     // Step 1: Target
     const [targetMode, setTargetMode] = useState('students');
@@ -12685,6 +12697,7 @@ const EmailCampaignPage = () => {
     const [templateId, setTemplateId] = useState('');
     const [templates, setTemplates] = useState([]);
     const [subject, setSubject] = useState('');
+    const [customVarValues, setCustomVarValues] = useState({});
 
     useEffect(() => {
         if (!subject && templateId) {
@@ -12705,9 +12718,9 @@ const EmailCampaignPage = () => {
     const searchDebouncer = useRef(null);
 
     useEffect(() => {
-        api.get('/api/classrooms', { params: { col: 'Id,name', limit: 150, filter: "Status eq 'Current'" } })
+        api.get('/api/classrooms', { params: { col: 'Id,name', limit: 150, filters: "Status eq 'Current'" } })
             .then(res => setClassrooms(res.data?.data || res.data || []));
-        api.get('/api/templates', { params: { filter: "type eq 'email'", col: 'id,name,content' } })
+        api.get('/api/templates', { params: { filter: "type==email", col: 'id,name,content,customvar' } })
             .then(res => setTemplates(res.data?.data || res.data || []));
     }, []);
 
@@ -12801,9 +12814,19 @@ const EmailCampaignPage = () => {
     };
 
     const startCampaign = async () => {
+        if (!window.confirm("Are you sure you want to send this campaign? This action cannot be undone.")) return;
         if (!templateId) return alert('Please select a template');
         if (targetMode === 'students' && selectedStudents.size === 0) return alert('Please select at least one student');
         if (targetMode === 'classrooms' && targetClassrooms.size === 0) return alert('Please select at least one classroom');
+
+        const selectedTemplate = templates.find(t => String(t.Id || t.id) === String(templateId));
+        let customVars = [];
+        if (selectedTemplate && selectedTemplate.customvar) {
+            try { customVars = JSON.parse(selectedTemplate.customvar); } catch (e) { }
+        }
+        for (const v of customVars) {
+            if (!customVarValues[v.varname]) return alert(`Please enter a value for ${v.varname}`);
+        }
 
         try {
             const payload = {
@@ -12815,7 +12838,8 @@ const EmailCampaignPage = () => {
                 classrooms: Array.from(targetClassrooms),
                 templateId,
                 subject,
-                attachments
+                attachments,
+                customVariables: customVarValues
             };
 
             const res = await api.post('/api/campaigns/email', payload);
@@ -12846,7 +12870,7 @@ const EmailCampaignPage = () => {
     }, [polling, campaignId]);
 
     const reset = () => {
-        setStep(1);
+        setStep(0);
         setCampaignId(null);
         setCampaignStatus(null);
         setTargetMode('students');
@@ -12854,6 +12878,7 @@ const EmailCampaignPage = () => {
         setTargetClassrooms(new Set());
         setAttachments([]);
         setSubject('');
+        setCustomVarValues({});
     };
 
     return (
@@ -13008,9 +13033,9 @@ const EmailCampaignPage = () => {
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
                             <div style={{ textAlign: 'center', padding: 48, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, maxWidth: 500 }}>
                                 <div style={{ color: '#16a34a', marginBottom: 16 }}><Icon name="users" size={48} /></div>
-                                <h3 style={{ margin: '0 0 8px 0', color: '#166534', fontSize: '1.5rem' }}>All Enrolled Students</h3>
+                                <h3 style={{ margin: '0 0 8px 0', color: '#166534', fontSize: '1.5rem' }}>{(dateFrom || dateTo) ? 'Filtered' : 'All'} {targetStatus} Students</h3>
                                 <div style={{ color: '#15803d', fontSize: '1.1rem' }}>
-                                    This will dynamically issue the campaign to <b>every student</b> whose status is currently "Enrolled".
+                                    This will dynamically issue the campaign to <b>{(dateFrom || dateTo) ? 'the students' : 'every student'}</b> whose status is currently "{targetStatus}"{(dateFrom || dateTo) ? ' within the selected dates.' : '.'}
                                 </div>
                             </div>
                         </div>
@@ -13024,7 +13049,19 @@ const EmailCampaignPage = () => {
                         <h3 style={{ margin: 0, fontWeight: 700 }}>Email Content</h3>
                         <div style={{ display: 'flex', gap: 12 }}>
                             <button className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
-                            <button className="btn btn-primary" onClick={() => setStep(3)} disabled={!templateId}>
+                            <button className="btn btn-primary" onClick={() => {
+                                const selectedTemplate = templates.find(t => String(t.Id || t.id) === String(templateId));
+                                let customVars = [];
+                                if (selectedTemplate && selectedTemplate.customvar) {
+                                    try { customVars = JSON.parse(selectedTemplate.customvar); } catch (e) { }
+                                }
+                                for (const v of customVars) {
+                                    if (!customVarValues[v.varname] || !customVarValues[v.varname].trim()) {
+                                        return alert(`Please enter a value for ${v.varname}`);
+                                    }
+                                }
+                                setStep(3);
+                            }} disabled={!templateId}>
                                 Next Step <Icon name="arrow-right" size={16} style={{ marginLeft: 8 }} />
                             </button>
                         </div>
@@ -13049,6 +13086,23 @@ const EmailCampaignPage = () => {
 
                         {templateId && templates.find(t => String(t.Id || t.id) === String(templateId)) && (
                             <div>
+                                {(() => {
+                                    const t = templates.find(t => String(t.Id || t.id) === String(templateId));
+                                    let cv = [];
+                                    if (t && t.customvar) { try { cv = JSON.parse(t.customvar); } catch (e) { } }
+                                    if (cv.length === 0) return null;
+                                    return (
+                                        <div style={{ marginBottom: 24, padding: 24, background: '#f8fafc', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+                                            <h4 style={{ margin: '0 0 16px 0', color: 'var(--color-primary)' }}>Template Custom Variables</h4>
+                                            {cv.map(v => (
+                                                <div key={v.varname} style={{ marginBottom: 12 }}>
+                                                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>{v.varname} <span style={{ color: 'red' }}>*</span></label>
+                                                    <input type="text" className="form-input" value={customVarValues[v.varname] || ''} onChange={e => setCustomVarValues({ ...customVarValues, [v.varname]: e.target.value })} style={{ width: '100%', padding: '12px 16px', fontSize: '1.05rem' }} placeholder={`Value for ${v.varname}`} />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
                                 <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>Template Preview</label>
                                 <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 24, background: '#fff', maxHeight: 400, overflowY: 'auto' }} dangerouslySetInnerHTML={{ __html: templates.find(t => String(t.Id || t.id) === String(templateId))?.Content || templates.find(t => String(t.Id || t.id) === String(templateId))?.content || '<div style="color:var(--color-text-muted)">No content available for this template.</div>' }} />
                             </div>
@@ -13118,25 +13172,19 @@ const EmailCampaignPage = () => {
                                         </div>
                                     </div>
                                     <div>
-                                        <div style={{ fontSize: '0.85rem', color: '#15803d', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Email Template</div>
+                                        <div style={{ fontSize: '0.85rem', color: '#15803d', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Using Email Template</div>
                                         <div style={{ fontSize: '1.1rem', color: '#14532d', fontWeight: 600, marginTop: 4 }}>
                                             {templates.find(t => String(t.Id || t.id) === String(templateId))?.Name || templates.find(t => String(t.Id || t.id) === String(templateId))?.name || 'None Selected'}
                                         </div>
                                     </div>
                                     {subject && (
                                         <div>
-                                            <div style={{ fontSize: '0.85rem', color: '#15803d', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subject Override</div>
+                                            <div style={{ fontSize: '0.85rem', color: '#15803d', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Email Subject</div>
                                             <div style={{ fontSize: '1.1rem', color: '#14532d', fontWeight: 600, marginTop: 4 }}>
                                                 {subject}
                                             </div>
                                         </div>
                                     )}
-                                    <div>
-                                        <div style={{ fontSize: '0.85rem', color: '#15803d', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Attachments</div>
-                                        <div style={{ fontSize: '1.1rem', color: '#14532d', fontWeight: 600, marginTop: 4 }}>
-                                            {attachments.length} {attachments.length === 1 ? 'file' : 'files'}
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -13192,7 +13240,19 @@ const EmailCampaignPage = () => {
 };
 
 const MassInvoicesPage = () => {
-    const [step, setStep] = useState(1);
+    const [step, setStep] = useState(0);
+    const [batchList, setBatchList] = useState([]);
+    const [loadingList, setLoadingList] = useState(false);
+
+    useEffect(() => {
+        if (step === 0) {
+            setLoadingList(true);
+            api.get('/api/invoices/batch')
+                .then(res => setBatchList(res.data.data || []))
+                .catch(err => alert('Failed to load batch history'))
+                .finally(() => setLoadingList(false));
+        }
+    }, [step]);
 
     // Step 1 State
     const [loading, setLoading] = useState(false);
@@ -13226,14 +13286,14 @@ const MassInvoicesPage = () => {
     const searchDebouncer = useRef(null);
 
     useEffect(() => {
-        api.get('/api/classrooms', { params: { col: 'Id,name', limit: 150, filter: "Status eq 'Current'" } })
+        api.get('/api/classrooms', { params: { col: 'Id,name', limit: 150, filters: "Status eq 'Current'" } })
             .then(res => setClassrooms(res.data?.data || res.data || []))
             .catch(() => { });
     }, []);
 
     useEffect(() => {
         if (sendOnIssue && templates.length === 0) {
-            api.get('/api/templates', { params: { filter: 'type==email', col: 'id,name' } })
+            api.get('/api/templates', { params: { filter: "type==email", col: 'id,name' } })
                 .then(res => setTemplates(res.data?.data || res.data || []))
                 .catch(err => console.error('Failed to load templates:', err));
         }
@@ -13249,7 +13309,7 @@ const MassInvoicesPage = () => {
     useEffect(() => {
         setLoading(true);
         const q = debouncedSearch.trim();
-        let filter = "status eq 'Enrolled'";
+        let filters = "status eq 'Enrolled'";
 
         if (q) {
             const escaped = q.replace(/'/g, "''");
@@ -13257,14 +13317,14 @@ const MassInvoicesPage = () => {
             const searchPart = isAllDigits
                 ? `code eq '${escaped}';parentphone eq '${escaped}'`
                 : `name con '${escaped}';classroom_name con '${escaped}'`;
-            filter = `${searchPart},${filter}`;
+            filters = `${searchPart},${filters}`;
         }
 
         if (selectedClassroomId) {
-            filter = `${filter},ClassroomId eq ${selectedClassroomId}`;
+            filters = `${filters},ClassroomId eq ${selectedClassroomId}`;
         }
 
-        api.get('/api/students', { params: { col: 'Id,name,code,photo,classroom,classroom_name', limit: 2000, filter } })
+        api.get('/api/students', { params: { col: 'Id,name,code,photo,classroom,classroom_name', limit: 2000, filters } })
             .then(res => {
                 const list = res.data?.data || res.data || [];
                 list.forEach(s => fetchedStudentsRef.current.set(s.Id || s.id, s));
@@ -13428,7 +13488,7 @@ const MassInvoicesPage = () => {
         setPolling(false);
         if (pollInterval.current) clearInterval(pollInterval.current);
         setSelectedStudents(new Set());
-        setStep(1);
+        setStep(0);
     };
 
 
@@ -13447,14 +13507,53 @@ const MassInvoicesPage = () => {
         <div style={{ padding: 24, maxWidth: 1000, margin: '0 auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                 <h2 style={{ margin: 0 }}>Mass Invoice Issue</h2>
-                <div style={{ display: 'flex', gap: 8 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 1 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 1 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>1</div>
-                    <div style={{ width: 32, height: 2, background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 2 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>2</div>
-                    <div style={{ width: 32, height: 2, background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 3 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>3</div>
-                </div>
+                {step > 0 && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 1 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 1 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>1</div>
+                        <div style={{ width: 32, height: 2, background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 2 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>2</div>
+                        <div style={{ width: 32, height: 2, background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 3 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>3</div>
+                    </div>
+                )}
+                {step === 0 && (
+                    <button className="btn btn-primary" onClick={() => setStep(1)}>
+                        <Icon name="add" size={16} style={{ marginRight: 8 }} /> Create New Batch Invoice
+                    </button>
+                )}
             </div>
+
+            {step === 0 && (
+                <div className="card" style={{ padding: 24 }}>
+                    {loadingList ? <div style={{textAlign: 'center', padding: 24}}>Loading...</div> : (
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {batchList.map(c => (
+                                    <tr key={c.id}>
+                                        <td>{new Date(c.created_at).toLocaleString()}</td>
+                                        <td>
+                                            <span className={`badge ${c.status === 'COMPLETED' ? 'badge-success' : c.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
+                                                {c.status}
+                                            </span>
+                                        </td>
+                                        <td>{c.completed_count} / {c.total_count} {c.failed_count > 0 && <span style={{color: 'var(--color-danger)'}}>({c.failed_count} failed)</span>}</td>
+                                    </tr>
+                                ))}
+                                {batchList.length === 0 && (
+                                    <tr><td colSpan="3" style={{ textAlign: 'center', padding: 24 }}>No previous batch invoices</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            )}
 
             {step === 1 && (
                 <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)' }}>
@@ -13735,7 +13834,19 @@ const MassInvoicesPage = () => {
 // ═══════════════════════════════════════════
 
 const SendRemindersPage = () => {
-    const [step, setStep] = useState(1);
+    const [step, setStep] = useState(0);
+    const [batchList, setBatchList] = useState([]);
+    const [loadingList, setLoadingList] = useState(false);
+
+    useEffect(() => {
+        if (step === 0) {
+            setLoadingList(true);
+            api.get('/api/students/reminders/batches')
+                .then(res => setBatchList(res.data.data || []))
+                .catch(err => alert('Failed to load batch history'))
+                .finally(() => setLoadingList(false));
+        }
+    }, [step]);
 
     // Step 1 State
     const [loading, setLoading] = useState(false);
@@ -13765,11 +13876,11 @@ const SendRemindersPage = () => {
     const fetchedStudentsRef = useRef(new Map());
 
     useEffect(() => {
-        api.get('/api/classrooms', { params: { col: 'Id,name', limit: 150, filter: "Status eq 'Current'" } })
+        api.get('/api/classrooms', { params: { col: 'Id,name', limit: 150, filters: "Status eq 'Current'" } })
             .then(res => setClassrooms(res.data?.data || res.data || []))
             .catch(() => { });
 
-        api.get('/api/templates', { params: { filter: 'type==email', col: 'id,name' } })
+        api.get('/api/templates', { params: { filter: "type==email,issystem==0", col: 'id,name' } })
             .then(res => setTemplates(res.data?.data || res.data || []))
             .catch(err => console.error('Failed to load templates:', err));
     }, []);
@@ -13945,21 +14056,60 @@ const SendRemindersPage = () => {
         setCompleted(false);
         setSelectedStudents(new Set());
         setTargetClassrooms(new Set());
-        setStep(1);
+        setStep(0);
     };
 
     return (
         <div style={{ padding: 24, maxWidth: 1000, margin: '0 auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                 <h2 style={{ margin: 0 }}>Send Reminders</h2>
-                <div style={{ display: 'flex', gap: 8 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 1 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 1 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>1</div>
-                    <div style={{ width: 32, height: 2, background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 2 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>2</div>
-                    <div style={{ width: 32, height: 2, background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 3 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>3</div>
-                </div>
+                {step > 0 && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 1 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 1 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>1</div>
+                        <div style={{ width: 32, height: 2, background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 2 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>2</div>
+                        <div style={{ width: 32, height: 2, background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 3 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>3</div>
+                    </div>
+                )}
+                {step === 0 && (
+                    <button className="btn btn-primary" onClick={() => setStep(1)}>
+                        <Icon name="add" size={16} style={{ marginRight: 8 }} /> Create New Reminders Batch
+                    </button>
+                )}
             </div>
+
+            {step === 0 && (
+                <div className="card" style={{ padding: 24 }}>
+                    {loadingList ? <div style={{textAlign: 'center', padding: 24}}>Loading...</div> : (
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {batchList.map(c => (
+                                    <tr key={c.id}>
+                                        <td>{new Date(c.created_at).toLocaleString()}</td>
+                                        <td>
+                                            <span className={`badge ${c.status === 'COMPLETED' ? 'badge-success' : c.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
+                                                {c.status}
+                                            </span>
+                                        </td>
+                                        <td>{c.completed_count} / {c.total_count} {c.failed_count > 0 && <span style={{color: 'var(--color-danger)'}}>({c.failed_count} failed)</span>}</td>
+                                    </tr>
+                                ))}
+                                {batchList.length === 0 && (
+                                    <tr><td colSpan="3" style={{ textAlign: 'center', padding: 24 }}>No previous reminder batches</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            )}
 
             {step === 1 && (
                 <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)' }}>
@@ -14153,7 +14303,7 @@ const PaymentsLogPage = () => {
                 filter = `studentd_name con '${escaped}'`;
             }
         }
-        return { col: cols, filter: filter, orderby: 'date DESC' };
+        return { col: cols, filters: filter, orderby: 'date DESC' };
     };
 
     const extractList = (data) => {
