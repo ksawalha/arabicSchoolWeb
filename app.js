@@ -8389,7 +8389,8 @@ const MassInvoicesPage = () => {
           itemID: l.itemId,
           quantity: Number(l.quantity),
           unitPrice: Number(l.amount),
-          discountPercent: l.discount || 0
+          discountPercent: l.discount || 0,
+          description: l.description || null
         })),
         sendOnIssue,
         templateId: templateId.trim() || null
