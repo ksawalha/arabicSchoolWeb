@@ -12661,7 +12661,7 @@ const EmailCampaignPage = () => {
         if (step === 0) {
             setLoadingList(true);
             api.get('/api/campaigns/email')
-                .then(res => setCampaignsList(res.data.data || []))
+                .then(res => setCampaignsList(res.data?.data || res.data || []))
                 .catch(err => alert('Failed to load campaigns'))
                 .finally(() => setLoadingList(false));
         }
@@ -12885,16 +12885,62 @@ const EmailCampaignPage = () => {
         <div style={{ padding: 24, maxWidth: 1000, margin: '0 auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                 <h2 style={{ margin: 0 }}>Email Campaign</h2>
-                <div style={{ display: 'flex', gap: 8 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 1 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 1 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>1</div>
-                    <div style={{ width: 32, height: 2, background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 2 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>2</div>
-                    <div style={{ width: 32, height: 2, background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 3 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>3</div>
-                    <div style={{ width: 32, height: 2, background: step >= 4 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 4 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 4 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>4</div>
-                </div>
+                {step > 0 && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 1 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 1 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>1</div>
+                        <div style={{ width: 32, height: 2, background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 2 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>2</div>
+                        <div style={{ width: 32, height: 2, background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 3 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>3</div>
+                        <div style={{ width: 32, height: 2, background: step >= 4 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 4 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 4 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>4</div>
+                    </div>
+                )}
+                {step === 0 && (
+                    <button className="btn btn-primary" onClick={() => setStep(1)}>
+                        <Icon name="add" size={16} style={{ marginRight: 8 }} /> Create New Campaign
+                    </button>
+                )}
             </div>
+
+            {step === 0 && (
+                <div className="card" style={{ padding: 24 }}>
+                    {loadingList ? <div style={{ textAlign: 'center', padding: 24 }}>Loading...</div> : (
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {campaignsList.map(c => {
+                                    const created_at = c.created_at || c.createdAt || c.CreatedAt;
+                                    const status = c.status || c.Status || 'UNKNOWN';
+                                    const completed_count = c.completed_count || c.completedCount || c.CompletedCount || 0;
+                                    const total_count = c.total_count || c.totalCount || c.TotalCount || 0;
+                                    const failed_count = c.failed_count || c.failedCount || c.FailedCount || 0;
+                                    return (
+                                        <tr key={c.id || c.Id}>
+                                            <td>{created_at ? new Date(created_at).toLocaleString() : 'N/A'}</td>
+                                            <td>
+                                                <span className={`badge ${status === 'COMPLETED' ? 'badge-success' : status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
+                                                    {status}
+                                                </span>
+                                            </td>
+                                            <td>{completed_count} / {total_count} {failed_count > 0 && <span style={{ color: 'var(--color-danger)' }}>({failed_count} failed)</span>}</td>
+                                        </tr>
+                                    );
+                                })}
+                                {campaignsList.length === 0 && (
+                                    <tr><td colSpan="3" style={{ textAlign: 'center', padding: 24 }}>No previous email campaigns</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            )}
 
             {step === 1 && (
                 <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)' }}>
@@ -13248,7 +13294,7 @@ const MassInvoicesPage = () => {
         if (step === 0) {
             setLoadingList(true);
             api.get('/api/invoices/batch')
-                .then(res => setBatchList(res.data.data || []))
+                .then(res => setBatchList(res.data?.data || res.data || []))
                 .catch(err => alert('Failed to load batch history'))
                 .finally(() => setLoadingList(false));
         }
@@ -13313,7 +13359,7 @@ const MassInvoicesPage = () => {
 
         if (q) {
             const escaped = q.replace(/'/g, "''");
-            const isAllDigits = /^\\d+$/.test(escaped);
+            const isAllDigits = /^\d+$/.test(escaped);
             const searchPart = isAllDigits
                 ? `code eq '${escaped}';parentphone eq '${escaped}'`
                 : `name con '${escaped}';classroom_name con '${escaped}'`;
@@ -13324,7 +13370,7 @@ const MassInvoicesPage = () => {
             filters = `${filters},ClassroomId eq ${selectedClassroomId}`;
         }
 
-        api.get('/api/students', { params: { col: 'Id,name,code,photo,classroom,classroom_name', limit: 2000, filters } })
+        api.get('/api/students', { params: { col: 'Id,name,code,photo,classroom,classroom_name', limit: 2000, filter: filters } })
             .then(res => {
                 const list = res.data?.data || res.data || [];
                 list.forEach(s => fetchedStudentsRef.current.set(s.Id || s.id, s));
@@ -13526,8 +13572,8 @@ const MassInvoicesPage = () => {
 
             {step === 0 && (
                 <div className="card" style={{ padding: 24 }}>
-                    {loadingList ? <div style={{textAlign: 'center', padding: 24}}>Loading...</div> : (
-                        <table className="table">
+                    {loadingList ? <div style={{ textAlign: 'center', padding: 24 }}>Loading...</div> : (
+                        <table className="data-table">
                             <thead>
                                 <tr>
                                     <th>Date</th>
@@ -13536,17 +13582,24 @@ const MassInvoicesPage = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {batchList.map(c => (
-                                    <tr key={c.id}>
-                                        <td>{new Date(c.created_at).toLocaleString()}</td>
-                                        <td>
-                                            <span className={`badge ${c.status === 'COMPLETED' ? 'badge-success' : c.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
-                                                {c.status}
-                                            </span>
-                                        </td>
-                                        <td>{c.completed_count} / {c.total_count} {c.failed_count > 0 && <span style={{color: 'var(--color-danger)'}}>({c.failed_count} failed)</span>}</td>
-                                    </tr>
-                                ))}
+                                {batchList.map(c => {
+                                    const created_at = c.created_at || c.createdAt || c.CreatedAt;
+                                    const status = c.status || c.Status || 'UNKNOWN';
+                                    const completed_count = c.completed_count || c.completedCount || c.CompletedCount || 0;
+                                    const total_count = c.total_count || c.totalCount || c.TotalCount || 0;
+                                    const failed_count = c.failed_count || c.failedCount || c.FailedCount || 0;
+                                    return (
+                                        <tr key={c.id || c.Id}>
+                                            <td>{created_at ? new Date(created_at).toLocaleString() : 'N/A'}</td>
+                                            <td>
+                                                <span className={`badge ${status === 'COMPLETED' ? 'badge-success' : status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
+                                                    {status}
+                                                </span>
+                                            </td>
+                                            <td>{completed_count} / {total_count} {failed_count > 0 && <span style={{ color: 'var(--color-danger)' }}>({failed_count} failed)</span>}</td>
+                                        </tr>
+                                    );
+                                })}
                                 {batchList.length === 0 && (
                                     <tr><td colSpan="3" style={{ textAlign: 'center', padding: 24 }}>No previous batch invoices</td></tr>
                                 )}
@@ -13843,7 +13896,7 @@ const SendRemindersPage = () => {
         if (step === 0) {
             setLoadingList(true);
             api.get('/api/students/reminders/batches')
-                .then(res => setBatchList(res.data.data || []))
+                .then(res => setBatchList(res.data?.data || res.data || []))
                 .catch(err => alert('Failed to load batch history'))
                 .finally(() => setLoadingList(false));
         }
@@ -13857,6 +13910,7 @@ const SendRemindersPage = () => {
     const [selectedStudents, setSelectedStudents] = useState(new Set());
     const [search, setSearch] = useState('');
     const [classrooms, setClassrooms] = useState([]);
+    const [selectedClassroomId, setSelectedClassroomId] = useState('');
 
     // Pagination State for Students
     const [page, setPage] = useState(1);
@@ -13897,7 +13951,7 @@ const SendRemindersPage = () => {
         setStudents([]);
         setPage(1);
         setHasMore(true);
-    }, [debouncedSearch]);
+    }, [debouncedSearch, selectedClassroomId]);
 
     useEffect(() => {
         if (targetMode !== 'students') return;
@@ -13919,6 +13973,10 @@ const SendRemindersPage = () => {
                         ? `code eq '${escaped}'`
                         : `name con '${escaped}';classroom_name con '${escaped}'`;
                     filter = searchPart;
+                }
+
+                if (selectedClassroomId) {
+                    filter = filter ? `${filter},ClassroomId eq ${selectedClassroomId}` : `ClassroomId eq ${selectedClassroomId}`;
                 }
 
                 const res = await api.get('/api/students/balances', { params: { limit: 20, page, filter } });
@@ -13947,7 +14005,7 @@ const SendRemindersPage = () => {
 
         loadStudents();
         return () => { active = false; };
-    }, [page, debouncedSearch, targetMode]);
+    }, [page, debouncedSearch, targetMode, selectedClassroomId]);
 
     const lastElementRef = useCallback(node => {
         if (loading || loadingMore) return;
@@ -14082,8 +14140,8 @@ const SendRemindersPage = () => {
 
             {step === 0 && (
                 <div className="card" style={{ padding: 24 }}>
-                    {loadingList ? <div style={{textAlign: 'center', padding: 24}}>Loading...</div> : (
-                        <table className="table">
+                    {loadingList ? <div style={{ textAlign: 'center', padding: 24 }}>Loading...</div> : (
+                        <table className="data-table">
                             <thead>
                                 <tr>
                                     <th>Date</th>
@@ -14092,17 +14150,24 @@ const SendRemindersPage = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {batchList.map(c => (
-                                    <tr key={c.id}>
-                                        <td>{new Date(c.created_at).toLocaleString()}</td>
-                                        <td>
-                                            <span className={`badge ${c.status === 'COMPLETED' ? 'badge-success' : c.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
-                                                {c.status}
-                                            </span>
-                                        </td>
-                                        <td>{c.completed_count} / {c.total_count} {c.failed_count > 0 && <span style={{color: 'var(--color-danger)'}}>({c.failed_count} failed)</span>}</td>
-                                    </tr>
-                                ))}
+                                {batchList.map(c => {
+                                    const created_at = c.created_at || c.createdAt || c.CreatedAt;
+                                    const status = c.status || c.Status || 'UNKNOWN';
+                                    const completed_count = c.completed_count || c.completedCount || c.CompletedCount || 0;
+                                    const total_count = c.total_count || c.totalCount || c.TotalCount || 0;
+                                    const failed_count = c.failed_count || c.failedCount || c.FailedCount || 0;
+                                    return (
+                                        <tr key={c.id || c.Id}>
+                                            <td>{created_at ? new Date(created_at).toLocaleString() : 'N/A'}</td>
+                                            <td>
+                                                <span className={`badge ${status === 'COMPLETED' ? 'badge-success' : status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
+                                                    {status}
+                                                </span>
+                                            </td>
+                                            <td>{completed_count} / {total_count} {failed_count > 0 && <span style={{ color: 'var(--color-danger)' }}>({failed_count} failed)</span>}</td>
+                                        </tr>
+                                    );
+                                })}
                                 {batchList.length === 0 && (
                                     <tr><td colSpan="3" style={{ textAlign: 'center', padding: 24 }}>No previous reminder batches</td></tr>
                                 )}
@@ -14138,6 +14203,12 @@ const SendRemindersPage = () => {
                         <>
                             <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
                                 <input type="text" className="form-input" placeholder="Search students..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 1 }} />
+                                <select className="form-input" value={selectedClassroomId} onChange={e => setSelectedClassroomId(e.target.value)} style={{ width: 250 }}>
+                                    <option value="">All Classrooms</option>
+                                    {classrooms.map(c => (
+                                        <option key={c.Id || c.id} value={c.Id || c.id}>{c.name || c.Name}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px', borderBottom: '1px solid var(--color-border)', background: '#f8fafc', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted)' }}>
