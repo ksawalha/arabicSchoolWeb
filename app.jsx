@@ -13297,7 +13297,7 @@ const EmailCampaignPage = () => {
                 </div>
             )}
             {/* Campaign Detail Modal */}
-            {(selectedCampaignDetail || loadingCampaignDetail) && (
+            {(selectedCampaignDetail || loadingCampaignDetail) && ReactDOM.createPortal(
                 <div className="modal-overlay" onClick={() => { setSelectedCampaignDetail(null); setCampaignDetailFilter('all'); }}>
                     <div className="modal-box" style={{ width: '100%', maxWidth: 900, padding: 0, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
                         {loadingCampaignDetail ? (
@@ -13334,7 +13334,7 @@ const EmailCampaignPage = () => {
                                         <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
                                             {d.subject && <div style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.85rem' }}><strong>Subject:</strong> {d.subject}</div>}
                                             {d.targetMode && <div style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.85rem' }}><strong>Target:</strong> {d.targetMode}</div>}
-                                            {d.templateId && <div style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.85rem' }}><strong>Template:</strong> #{d.templateId}</div>}
+                                            {d.templateId && <div style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.85rem' }}><strong>Template:</strong> {d.templateName || `#${d.templateId}`}</div>}
                                         </div>
 
                                         {/* Progress */}
@@ -14035,7 +14035,7 @@ const MassInvoicesPage = () => {
                 </div>
             )}
             {/* Batch Detail Modal */}
-            {(selectedBatchDetail || loadingDetail) && (
+            {(selectedBatchDetail || loadingDetail) && ReactDOM.createPortal(
                 <div className="modal-overlay" onClick={() => { setSelectedBatchDetail(null); setDetailFilter('all'); }}>
                     <div className="modal-box" style={{ width: '100%', maxWidth: 900, padding: 0, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
                         {loadingDetail ? (
@@ -14100,7 +14100,7 @@ const MassInvoicesPage = () => {
                                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                                 {lineItemsParsed.map((li, idx) => (
                                                     <div key={idx} style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.85rem' }}>
-                                                        <strong>{li.itemID || li.ItemID || 'Item'}</strong>
+                                                        <strong>{li.description || li.Description || li.itemID || li.ItemID || 'Item'}</strong>
                                                         <span style={{ color: 'var(--color-text-muted)', marginLeft: 8 }}>Qty: {li.quantity || li.Quantity || 1}</span>
                                                         <span style={{ color: 'var(--color-text-muted)', marginLeft: 8 }}>${li.unitPrice || li.UnitPrice || 0}</span>
                                                     </div>
