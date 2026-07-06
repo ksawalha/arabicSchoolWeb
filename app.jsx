@@ -1,4 +1,3 @@
-console.log("APP.JSX EXECUTING!");
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 const DateTime = luxon.DateTime;
 
@@ -14055,7 +14054,7 @@ const MassInvoicesPage = () => {
                             let lineItemsParsed = [];
                             try {
                                 if (d.items?.[0]?.lineItems) lineItemsParsed = JSON.parse(d.items[0].lineItems);
-                            } catch {}
+                            } catch { }
                             return (
                                 <>
                                     {/* Header */}
