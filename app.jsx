@@ -12656,6 +12656,22 @@ const EmailCampaignPage = () => {
     const [step, setStep] = useState(0);
     const [campaignsList, setCampaignsList] = useState([]);
     const [loadingList, setLoadingList] = useState(false);
+    const [selectedCampaignDetail, setSelectedCampaignDetail] = useState(null);
+    const [loadingCampaignDetail, setLoadingCampaignDetail] = useState(false);
+    const [campaignDetailFilter, setCampaignDetailFilter] = useState('all');
+
+    const openCampaignDetail = async (id) => {
+        setLoadingCampaignDetail(true);
+        setSelectedCampaignDetail(null);
+        try {
+            const res = await api.get(`/api/campaigns/email/${id}/details`);
+            setSelectedCampaignDetail(res.data);
+        } catch (err) {
+            alert('Failed to load campaign details: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setLoadingCampaignDetail(false);
+        }
+    };
 
     useEffect(() => {
         if (step === 0) {
@@ -12922,7 +12938,7 @@ const EmailCampaignPage = () => {
                                     const total_count = c.total_count || c.totalCount || c.TotalCount || 0;
                                     const failed_count = c.failed_count || c.failedCount || c.FailedCount || 0;
                                     return (
-                                        <tr key={c.id || c.Id}>
+                                        <tr key={c.id || c.Id} onClick={() => openCampaignDetail(c.id || c.Id)} style={{ cursor: 'pointer' }}>
                                             <td>{created_at ? new Date(created_at).toLocaleString() : 'N/A'}</td>
                                             <td>
                                                 <span className={`badge ${status === 'COMPLETED' ? 'badge-success' : status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
@@ -13281,6 +13297,130 @@ const EmailCampaignPage = () => {
                     )}
                 </div>
             )}
+            {/* Campaign Detail Modal */}
+            {(selectedCampaignDetail || loadingCampaignDetail) && (
+                <div className="modal-overlay" onClick={() => { setSelectedCampaignDetail(null); setCampaignDetailFilter('all'); }}>
+                    <div className="modal-box" style={{ width: '100%', maxWidth: 900, padding: 0, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+                        {loadingCampaignDetail ? (
+                            <div style={{ padding: 48, textAlign: 'center' }}>
+                                <div style={{ fontSize: '1.1rem', color: 'var(--color-text-muted)' }}>Loading campaign details...</div>
+                            </div>
+                        ) : selectedCampaignDetail && (() => {
+                            const d = selectedCampaignDetail;
+                            const pct = d.totalCount ? Math.round(((d.completedCount + d.failedCount) / d.totalCount) * 100) : 0;
+                            const filteredRecipients = (d.recipients || []).filter(r => {
+                                if (campaignDetailFilter === 'completed') return r.status === 'COMPLETED';
+                                if (campaignDetailFilter === 'failed') return r.status === 'FAILED';
+                                return true;
+                            });
+                            return (
+                                <>
+                                    {/* Header */}
+                                    <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid var(--color-border)', background: '#f8fafc' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                                                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Email Campaign Details</h2>
+                                                    <span className={`badge ${d.status === 'COMPLETED' ? 'badge-success' : d.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>{d.status}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 24, fontSize: '0.85rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
+                                                    <span>Created: {d.createdAt ? new Date(d.createdAt).toLocaleString() : 'N/A'}</span>
+                                                    {d.createdByName && <span>By: <strong>{d.createdByName}</strong></span>}
+                                                </div>
+                                            </div>
+                                            <button onClick={() => { setSelectedCampaignDetail(null); setCampaignDetailFilter('all'); }} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--color-text-muted)', lineHeight: 1, padding: 4 }}>&times;</button>
+                                        </div>
+
+                                        {/* Meta info */}
+                                        <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
+                                            {d.subject && <div style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.85rem' }}><strong>Subject:</strong> {d.subject}</div>}
+                                            {d.targetMode && <div style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.85rem' }}><strong>Target:</strong> {d.targetMode}</div>}
+                                            {d.templateId && <div style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.85rem' }}><strong>Template:</strong> #{d.templateId}</div>}
+                                        </div>
+
+                                        {/* Progress */}
+                                        <div style={{ marginTop: 16 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6, fontWeight: 600 }}>
+                                                <span>{pct}% Complete</span>
+                                                <span>{d.completedCount + d.failedCount} / {d.totalCount}</span>
+                                            </div>
+                                            <div style={{ background: '#e2e8f0', height: 8, borderRadius: 4, overflow: 'hidden' }}>
+                                                <div style={{ display: 'flex', height: '100%' }}>
+                                                    <div style={{ width: `${d.totalCount ? (d.completedCount / d.totalCount) * 100 : 0}%`, background: '#50AC55', transition: 'width 0.3s' }} />
+                                                    <div style={{ width: `${d.totalCount ? (d.failedCount / d.totalCount) * 100 : 0}%`, background: '#ef4444', transition: 'width 0.3s' }} />
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: '0.8rem' }}>
+                                                <span style={{ color: '#50AC55', fontWeight: 600 }}>{d.completedCount} succeeded</span>
+                                                <span style={{ color: '#ef4444', fontWeight: 600 }}>{d.failedCount} failed</span>
+                                                <span style={{ color: 'var(--color-text-muted)' }}>{d.totalCount - d.completedCount - d.failedCount} pending</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Attachments */}
+                                    {d.attachments && d.attachments.length > 0 && (
+                                        <div style={{ padding: '12px 28px', borderBottom: '1px solid var(--color-border)', background: '#fafbfc' }}>
+                                            <div style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted)', marginBottom: 8 }}>Attachments</div>
+                                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                                {d.attachments.map((att, idx) => (
+                                                    <div key={idx} style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                        <Icon name="attachment" size={14} />
+                                                        {att.fileName}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Filter Tabs */}
+                                    <div style={{ padding: '12px 28px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 8 }}>
+                                        {['all', 'completed', 'failed'].map(f => (
+                                            <button key={f} className={`btn ${campaignDetailFilter === f ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setCampaignDetailFilter(f)} style={{ padding: '6px 16px', fontSize: '0.85rem' }}>
+                                                {f === 'all' ? `All (${d.recipients?.length || 0})` : f === 'completed' ? `Completed (${d.completedCount})` : `Failed (${d.failedCount})`}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Recipients Table */}
+                                    <div style={{ flex: 1, overflowY: 'auto', padding: '0 28px 24px' }}>
+                                        <table className="data-table" style={{ marginTop: 16 }}>
+                                            <thead>
+                                                <tr>
+                                                    <th>Student</th>
+                                                    <th>Status</th>
+                                                    <th>Error</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredRecipients.map(r => (
+                                                    <tr key={r.recipientId}>
+                                                        <td>
+                                                            <div style={{ fontWeight: 600 }}>{r.studentName || 'Unknown'}</div>
+                                                            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>ID: {r.studentId}</div>
+                                                        </td>
+                                                        <td>
+                                                            <span className={`badge ${r.status === 'COMPLETED' ? 'badge-success' : r.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
+                                                                {r.status}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ fontSize: '0.85rem', color: r.errorMessage ? '#ef4444' : 'var(--color-text-muted)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.errorMessage || ''}>
+                                                            {r.errorMessage || '\u2014'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {filteredRecipients.length === 0 && (
+                                                    <tr><td colSpan="3" style={{ textAlign: 'center', padding: 24, color: 'var(--color-text-muted)' }}>No recipients match this filter</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -13289,6 +13429,22 @@ const MassInvoicesPage = () => {
     const [step, setStep] = useState(0);
     const [batchList, setBatchList] = useState([]);
     const [loadingList, setLoadingList] = useState(false);
+    const [selectedBatchDetail, setSelectedBatchDetail] = useState(null);
+    const [loadingDetail, setLoadingDetail] = useState(false);
+    const [detailFilter, setDetailFilter] = useState('all');
+
+    const openBatchDetail = async (id) => {
+        setLoadingDetail(true);
+        setSelectedBatchDetail(null);
+        try {
+            const res = await api.get(`/api/invoices/batch/${id}/details`);
+            setSelectedBatchDetail(res.data);
+        } catch (err) {
+            alert('Failed to load batch details: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setLoadingDetail(false);
+        }
+    };
 
     useEffect(() => {
         if (step === 0) {
@@ -13589,7 +13745,7 @@ const MassInvoicesPage = () => {
                                     const total_count = c.total_count || c.totalCount || c.TotalCount || 0;
                                     const failed_count = c.failed_count || c.failedCount || c.FailedCount || 0;
                                     return (
-                                        <tr key={c.id || c.Id}>
+                                        <tr key={c.id || c.Id} onClick={() => openBatchDetail(c.id || c.Id)} style={{ cursor: 'pointer' }}>
                                             <td>{created_at ? new Date(created_at).toLocaleString() : 'N/A'}</td>
                                             <td>
                                                 <span className={`badge ${status === 'COMPLETED' ? 'badge-success' : status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
@@ -13877,6 +14033,131 @@ const MassInvoicesPage = () => {
                             </>
                         );
                     })()}
+                </div>
+            )}
+            {/* Batch Detail Modal */}
+            {(selectedBatchDetail || loadingDetail) && (
+                <div className="modal-overlay" onClick={() => { setSelectedBatchDetail(null); setDetailFilter('all'); }}>
+                    <div className="modal-box" style={{ width: '100%', maxWidth: 900, padding: 0, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+                        {loadingDetail ? (
+                            <div style={{ padding: 48, textAlign: 'center' }}>
+                                <div style={{ fontSize: '1.1rem', color: 'var(--color-text-muted)' }}>Loading batch details...</div>
+                            </div>
+                        ) : selectedBatchDetail && (() => {
+                            const d = selectedBatchDetail;
+                            const pct = d.totalCount ? Math.round(((d.completedCount + d.failedCount) / d.totalCount) * 100) : 0;
+                            const statusColor = d.status === 'COMPLETED' ? '#50AC55' : d.status === 'FAILED' ? '#ef4444' : d.status === 'COMPLETED_WITH_ERRORS' ? '#f97316' : '#3b82f6';
+                            const filteredItems = (d.items || []).filter(i => {
+                                if (detailFilter === 'completed') return i.status === 'COMPLETED';
+                                if (detailFilter === 'failed') return i.status === 'FAILED';
+                                return true;
+                            });
+                            let lineItemsParsed = [];
+                            try {
+                                if (d.items?.[0]?.lineItems) lineItemsParsed = JSON.parse(d.items[0].lineItems);
+                            } catch {}
+                            return (
+                                <>
+                                    {/* Header */}
+                                    <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid var(--color-border)', background: '#f8fafc' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                                                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Batch Invoice Details</h2>
+                                                    <span className={`badge ${d.status === 'COMPLETED' ? 'badge-success' : d.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>{d.status}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 24, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                                                    <span>Created: {d.createdAt ? new Date(d.createdAt).toLocaleString() : 'N/A'}</span>
+                                                    {d.createdByName && <span>By: <strong>{d.createdByName}</strong></span>}
+                                                </div>
+                                            </div>
+                                            <button onClick={() => { setSelectedBatchDetail(null); setDetailFilter('all'); }} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--color-text-muted)', lineHeight: 1, padding: 4 }}>&times;</button>
+                                        </div>
+
+                                        {/* Progress */}
+                                        <div style={{ marginTop: 16 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6, fontWeight: 600 }}>
+                                                <span>{pct}% Complete</span>
+                                                <span>{d.completedCount + d.failedCount} / {d.totalCount}</span>
+                                            </div>
+                                            <div style={{ background: '#e2e8f0', height: 8, borderRadius: 4, overflow: 'hidden' }}>
+                                                <div style={{ display: 'flex', height: '100%' }}>
+                                                    <div style={{ width: `${d.totalCount ? (d.completedCount / d.totalCount) * 100 : 0}%`, background: '#50AC55', transition: 'width 0.3s' }} />
+                                                    <div style={{ width: `${d.totalCount ? (d.failedCount / d.totalCount) * 100 : 0}%`, background: '#ef4444', transition: 'width 0.3s' }} />
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: '0.8rem' }}>
+                                                <span style={{ color: '#50AC55', fontWeight: 600 }}>{d.completedCount} succeeded</span>
+                                                <span style={{ color: '#ef4444', fontWeight: 600 }}>{d.failedCount} failed</span>
+                                                <span style={{ color: 'var(--color-text-muted)' }}>{d.totalCount - d.completedCount - d.failedCount} pending</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Line Items Summary */}
+                                    {lineItemsParsed.length > 0 && (
+                                        <div style={{ padding: '12px 28px', borderBottom: '1px solid var(--color-border)', background: '#fafbfc' }}>
+                                            <div style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted)', marginBottom: 8 }}>Line Items Per Invoice</div>
+                                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                                {lineItemsParsed.map((li, idx) => (
+                                                    <div key={idx} style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.85rem' }}>
+                                                        <strong>{li.itemID || li.ItemID || 'Item'}</strong>
+                                                        <span style={{ color: 'var(--color-text-muted)', marginLeft: 8 }}>Qty: {li.quantity || li.Quantity || 1}</span>
+                                                        <span style={{ color: 'var(--color-text-muted)', marginLeft: 8 }}>${li.unitPrice || li.UnitPrice || 0}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Filter Tabs */}
+                                    <div style={{ padding: '12px 28px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 8 }}>
+                                        {['all', 'completed', 'failed'].map(f => (
+                                            <button key={f} className={`btn ${detailFilter === f ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDetailFilter(f)} style={{ padding: '6px 16px', fontSize: '0.85rem' }}>
+                                                {f === 'all' ? `All (${d.items?.length || 0})` : f === 'completed' ? `Completed (${d.completedCount})` : `Failed (${d.failedCount})`}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Items Table */}
+                                    <div style={{ flex: 1, overflowY: 'auto', padding: '0 28px 24px' }}>
+                                        <table className="data-table" style={{ marginTop: 16 }}>
+                                            <thead>
+                                                <tr>
+                                                    <th>Student</th>
+                                                    <th>Status</th>
+                                                    <th>Reckon ID</th>
+                                                    <th>Error</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredItems.map(item => (
+                                                    <tr key={item.invoiceItemId}>
+                                                        <td>
+                                                            <div style={{ fontWeight: 600 }}>{item.studentName || 'Unknown'}</div>
+                                                            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>ID: {item.studentId}</div>
+                                                        </td>
+                                                        <td>
+                                                            <span className={`badge ${item.status === 'COMPLETED' ? 'badge-success' : item.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
+                                                                {item.status}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ fontSize: '0.85rem', fontFamily: 'monospace' }}>{item.reckonInvoiceId || '—'}</td>
+                                                        <td style={{ fontSize: '0.85rem', color: item.errorMessage ? '#ef4444' : 'var(--color-text-muted)', maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.errorMessage || ''}>
+                                                            {item.errorMessage || '—'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {filteredItems.length === 0 && (
+                                                    <tr><td colSpan="4" style={{ textAlign: 'center', padding: 24, color: 'var(--color-text-muted)' }}>No items match this filter</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
                 </div>
             )}
         </div>
