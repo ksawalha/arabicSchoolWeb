@@ -1052,6 +1052,36 @@ const TopBar = ({ title, onHamburger, notifCount, onNavigate, searchQuery, onSea
 const SkeletonRow = ({ width = '100%', height = 14 }) => <div className="skeleton skeleton-text" style={{ width, height }} />;
 const SkeletonCard = ({ children }) => <div className="skeleton-card">{children}</div>;
 
+const DetailModalSkeleton = () => (
+    <div style={{ padding: '24px 28px', width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+            <div>
+                <div className="skeleton skeleton-text" style={{ width: 200, height: 28, marginBottom: 8 }} />
+                <div className="skeleton skeleton-text" style={{ width: 140, height: 16 }} />
+            </div>
+            <div className="skeleton" style={{ width: 100, height: 36, borderRadius: 8 }} />
+        </div>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
+            <div className="skeleton" style={{ width: 120, height: 32, borderRadius: 6 }} />
+            <div className="skeleton" style={{ width: 150, height: 32, borderRadius: 6 }} />
+            <div className="skeleton" style={{ width: 110, height: 32, borderRadius: 6 }} />
+        </div>
+        <div className="skeleton" style={{ width: '100%', height: 8, borderRadius: 4, marginBottom: 16 }} />
+        <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+            <div className="skeleton" style={{ width: 80, height: 32, borderRadius: 6 }} />
+            <div className="skeleton" style={{ width: 120, height: 32, borderRadius: 6 }} />
+            <div className="skeleton" style={{ width: 100, height: 32, borderRadius: 6 }} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="skeleton" style={{ width: '100%', height: 40, borderRadius: 6 }} />
+            <div className="skeleton" style={{ width: '100%', height: 40, borderRadius: 6 }} />
+            <div className="skeleton" style={{ width: '100%', height: 40, borderRadius: 6 }} />
+            <div className="skeleton" style={{ width: '100%', height: 40, borderRadius: 6 }} />
+            <div className="skeleton" style={{ width: '100%', height: 40, borderRadius: 6 }} />
+        </div>
+    </div>
+);
+
 const TableSkeleton = ({ rows = 5, cols = 4 }) => (
     <div className="data-table-wrap">
         <table className="data-table"><tbody>
@@ -13301,9 +13331,7 @@ const EmailCampaignPage = () => {
                 <div className="modal-overlay" onClick={() => { setSelectedCampaignDetail(null); setCampaignDetailFilter('all'); }}>
                     <div className="modal-box" style={{ width: '100%', maxWidth: 900, padding: 0, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
                         {loadingCampaignDetail ? (
-                            <div style={{ padding: 48, textAlign: 'center' }}>
-                                <div style={{ fontSize: '1.1rem', color: 'var(--color-text-muted)' }}>Loading campaign details...</div>
-                            </div>
+                            <DetailModalSkeleton />
                         ) : selectedCampaignDetail && (() => {
                             const d = selectedCampaignDetail;
                             const pct = d.totalCount ? Math.round(((d.completedCount + d.failedCount) / d.totalCount) * 100) : 0;
@@ -13419,7 +13447,7 @@ const EmailCampaignPage = () => {
                         })()}
                     </div>
                 </div>
-            )}
+                , document.getElementById('app-overlay-root'))}
         </div>
     );
 };
@@ -14039,9 +14067,7 @@ const MassInvoicesPage = () => {
                 <div className="modal-overlay" onClick={() => { setSelectedBatchDetail(null); setDetailFilter('all'); }}>
                     <div className="modal-box" style={{ width: '100%', maxWidth: 900, padding: 0, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
                         {loadingDetail ? (
-                            <div style={{ padding: 48, textAlign: 'center' }}>
-                                <div style={{ fontSize: '1.1rem', color: 'var(--color-text-muted)' }}>Loading batch details...</div>
-                            </div>
+                            <DetailModalSkeleton />
                         ) : selectedBatchDetail && (() => {
                             const d = selectedBatchDetail;
                             const pct = d.totalCount ? Math.round(((d.completedCount + d.failedCount) / d.totalCount) * 100) : 0;
@@ -14125,7 +14151,6 @@ const MassInvoicesPage = () => {
                                                 <tr>
                                                     <th>Student</th>
                                                     <th>Status</th>
-                                                    <th>Reckon ID</th>
                                                     <th>Error</th>
                                                 </tr>
                                             </thead>
@@ -14141,14 +14166,13 @@ const MassInvoicesPage = () => {
                                                                 {item.status}
                                                             </span>
                                                         </td>
-                                                        <td style={{ fontSize: '0.85rem', fontFamily: 'monospace' }}>{item.reckonInvoiceId || '—'}</td>
                                                         <td style={{ fontSize: '0.85rem', color: item.errorMessage ? '#ef4444' : 'var(--color-text-muted)', maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.errorMessage || ''}>
                                                             {item.errorMessage || '—'}
                                                         </td>
                                                     </tr>
                                                 ))}
                                                 {filteredItems.length === 0 && (
-                                                    <tr><td colSpan="4" style={{ textAlign: 'center', padding: 24, color: 'var(--color-text-muted)' }}>No items match this filter</td></tr>
+                                                    <tr><td colSpan="3" style={{ textAlign: 'center', padding: 24, color: 'var(--color-text-muted)' }}>No items match this filter</td></tr>
                                                 )}
                                             </tbody>
                                         </table>
@@ -14158,7 +14182,7 @@ const MassInvoicesPage = () => {
                         })()}
                     </div>
                 </div>
-            )}
+                , document.getElementById('app-overlay-root'))}
         </div>
     );
 };
