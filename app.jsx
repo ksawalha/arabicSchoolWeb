@@ -776,6 +776,7 @@ const navItems = [
     { id: '/feed', label: 'Homework & Announcements', icon: 'inbox' },
     { id: '/stories', label: 'Stories', icon: 'book-open' },
     { id: '/calendar', label: 'Calendar', icon: 'calendar' },
+    { id: '/surveys', label: 'Surveys', icon: 'clipboard' },
     { id: '/email-campaigns', label: 'Email Campaigns', icon: 'mail' },
     {
         id: 'invoices-group',
@@ -10862,6 +10863,520 @@ const CalendarPage = () => {
 
 
 // ═══════════════════════════════════════════
+//  SURVEYS PAGE
+// ═══════════════════════════════════════════
+
+const SurveyFormScreen = ({ survey, onClose, onSaved }) => {
+    const isCreate = !survey;
+    const [title, setTitle] = useState(survey?.title || '');
+    const [description, setDescription] = useState(survey?.description || '');
+    const [questions, setQuestions] = useState(() => {
+        try {
+            const parsed = survey?.content ? JSON.parse(survey.content) : [];
+            if (Array.isArray(parsed)) return parsed;
+            if (parsed && typeof parsed === 'object' && Array.isArray(parsed.Attribute1)) return parsed.Attribute1;
+            return [];
+        } catch {
+            return [];
+        }
+    });
+    const [classrooms, setClassrooms] = useState(survey?.classrooms || []);
+    const [notifyParents, setNotifyParents] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [allClassrooms, setAllClassrooms] = useState([]);
+    const [loadingClassrooms, setLoadingClassrooms] = useState(isCreate);
+    const [showClassroomPicker, setShowClassroomPicker] = useState(false);
+
+    useEffect(() => {
+        api.get('/api/getLookupData')
+            .then(res => setAllClassrooms(res.data?.classrooms || []))
+            .catch(console.error)
+            .finally(() => setLoadingClassrooms(false));
+    }, []);
+
+    const addQuestion = (type) => {
+        setQuestions([...questions, { id: 'q_' + Date.now(), type, title: '', description: '', choices: type === 'multichoice' ? [''] : [], required: true }]);
+    };
+
+    const updateQuestion = (idx, field, val) => {
+        const nq = [...questions];
+        nq[idx][field] = val;
+        setQuestions(nq);
+    };
+
+    const removeQuestion = (idx) => {
+        setQuestions(questions.filter((_, i) => i !== idx));
+    };
+
+    const save = async () => {
+        if (!title.trim()) return alert('Please enter a title');
+        if (questions.length === 0) return alert('Please add at least one question');
+        if (questions.some(q => !q.title.trim())) return alert('All questions must have a title');
+
+        for (let i = 0; i < questions.length; i++) {
+            const q = questions[i];
+            if (q.type === 'multiple_choice' || q.type === 'multichoice') {
+                const opts = q.choices || q.options || [];
+                if (opts.length === 0) {
+                    return alert(`Question ${i + 1} requires at least one option.`);
+                }
+                if (opts.some(opt => !opt || !opt.trim())) {
+                    return alert(`Question ${i + 1} contains an empty option. Please fill or delete it.`);
+                }
+            }
+        }
+
+        setSaving(true);
+        try {
+            const payload = {
+                title,
+                description,
+                content: JSON.stringify({ Attribute1: questions }),
+                classrooms,
+                notifyParents
+            };
+            if (isCreate) {
+                await api.post('/api/surveys', payload);
+            } else {
+                await api.put(`/api/surveys/${survey.id}`, payload);
+            }
+            onSaved();
+            onClose();
+        } catch (err) {
+            console.error(err);
+            alert('Failed to save survey');
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="page-container">
+            <div className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ padding: '0.4rem 0.8rem' }}>
+                        <Icon name="arrow-left" size={16} />
+                    </button>
+                    <h1 className="page-title" style={{ margin: 0 }}>{isCreate ? "Create Survey" : "Edit Survey"}</h1>
+                </div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                    <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+                    <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save Survey'}</button>
+                </div>
+            </div>
+
+            <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
+                <div className="form-group">
+                    <label className="form-label">Title</label>
+                    <input type="text" className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="" style={{ fontSize: '1.25rem', padding: '12px 16px', fontWeight: 500 }} />
+                </div>
+                <div className="form-group">
+                    <label className="form-label">Description (Optional)</label>
+                    <CkEditorHtmlField value={description} onChange={setDescription} height={200} placeholder="Provide some context..." />
+                </div>
+                        <div className="form-group">
+                            <label className="form-label">Target Audience (Classrooms)</label>
+                            {loadingClassrooms ? <div className="skeleton skeleton-text" style={{ width: '100%' }} /> : (
+                                <>
+                                    {showClassroomPicker && (
+                                        <ClassroomPickerModal
+                                            type="Announcement"
+                                            classrooms={allClassrooms}
+                                            selectedIds={classrooms}
+                                            classroomsArePublic={true}
+                                            onSave={(ids) => {
+                                                setClassrooms(ids);
+                                                setShowClassroomPicker(false);
+                                            }}
+                                            onClose={() => setShowClassroomPicker(false)}
+                                        />
+                                    )}
+                                    <div
+                                        className="composer-selector-row"
+                                        onClick={() => setShowClassroomPicker(true)}
+                                    >
+                                        <Icon name={classrooms.length === 0 ? "globe" : "users"} size={20} />
+                                        <span style={{ flex: 1 }}>
+                                            {classrooms.length === 0
+                                                ? 'Public (Visible to everyone)'
+                                                : classrooms.map(id => allClassrooms.find(c => c.id === id)?.name || `Classroom ${id}`).join(', ')}
+                                        </span>
+                                        <Icon name="chevron-right" size={18} style={{ opacity: 0.5 }} />
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="form-group">
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                <input type="checkbox" checked={notifyParents} onChange={e => setNotifyParents(e.target.checked)} />
+                                <span>Send push notification to targeted parents</span>
+                            </label>
+                        </div>
+
+                <div style={{ marginTop: 24, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ margin: 0 }}>Questions</h3>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-primary btn-sm" onClick={() => addQuestion('text')}><Icon name="type" size={14} /> Add Text</button>
+                        <button className="btn btn-primary btn-sm" onClick={() => addQuestion('multichoice')}><Icon name="list" size={14} /> Add Choices</button>
+                        <button className="btn btn-primary btn-sm" onClick={() => addQuestion('rating')}><Icon name="star" size={14} /> Add Rating</button>
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {questions.map((q, idx) => (
+                        <div key={q.id} style={{ padding: 16, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-bg-secondary)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                                    {idx + 1}. {q.type === 'text' ? 'Short Text' : q.type === 'rating' ? 'Rating' : 'Multiple Choice'}
+                                </span>
+                                <button className="btn btn-danger btn-sm" onClick={() => removeQuestion(idx)}><Icon name="trash-2" size={14} /> Delete</button>
+                            </div>
+                            <div className="form-group" style={{ marginBottom: 12 }}>
+                                <label className="form-label">Short Title</label>
+                                <input type="text" className="form-input" placeholder="e.g. Overall Experience" value={q.title} onChange={e => updateQuestion(idx, 'title', e.target.value)} />
+                            </div>
+
+                            <div className="form-group" style={{ marginBottom: 16 }}>
+                                <label className="form-label">Question Description</label>
+                                <input type="text" className="form-input" placeholder="e.g. How would you rate..." value={q.description || ''} onChange={e => updateQuestion(idx, 'description', e.target.value)} />
+                            </div>
+
+                            {(q.type === 'multiple_choice' || q.type === 'multichoice') && (
+                                <div className="form-group" style={{ marginBottom: 16 }}>
+                                    <label className="form-label">Choices</label>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 8, borderLeft: '2px solid var(--color-border)' }}>
+                                        {(q.choices || q.options || []).map((opt, oIdx) => (
+                                            <div key={oIdx} style={{ display: 'flex', gap: 8 }}>
+                                                <input type="text" className="form-input" style={{ padding: '6px 12px', fontSize: '0.9rem' }} placeholder={`Option ${oIdx + 1}`} value={opt} onChange={e => {
+                                                    const newOpts = [...(q.choices || q.options || [])];
+                                                    newOpts[oIdx] = e.target.value;
+                                                    updateQuestion(idx, 'choices', newOpts);
+                                                }} />
+                                                <button className="btn btn-danger btn-sm" onClick={() => {
+                                                    const newOpts = (q.choices || q.options || []).filter((_, i) => i !== oIdx);
+                                                    updateQuestion(idx, 'choices', newOpts);
+                                                }}><Icon name="x" size={14} /></button>
+                                            </div>
+                                        ))}
+                                        <button className="btn btn-primary btn-sm" style={{ alignSelf: 'flex-start', marginTop: 4 }} onClick={() => updateQuestion(idx, 'choices', [...(q.choices || q.options || []), ''])}>
+                                            <Icon name="plus" size={14} /> Add Option
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <input type="checkbox" checked={q.required} onChange={e => updateQuestion(idx, 'required', e.target.checked)} />
+                                <span style={{ fontSize: '0.85rem' }}>Required</span>
+                            </div>
+                        </div>
+                    ))}
+                    {questions.length === 0 && <div style={{ textAlign: 'center', padding: 24, color: 'var(--color-text-muted)' }}>No questions added.</div>}
+                </div>
+
+            </div>
+        </div>
+    );
+};
+
+const SurveyDetailsScreen = ({ surveyId, onBack }) => {
+    const [survey, setSurvey] = useState(null);
+    const [responses, setResponses] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [editing, setEditing] = useState(false);
+    const [reminding, setReminding] = useState(false);
+
+    const loadData = () => {
+        setLoading(true);
+        api.get(`/api/surveys/${surveyId}/details`)
+            .then(res => {
+                setSurvey(res.data?.survey);
+                setResponses(res.data?.responses || []);
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Failed to load survey details');
+            })
+            .finally(() => setLoading(false));
+    };
+
+    useEffect(() => {
+        loadData();
+    }, [surveyId]);
+
+    const handleExport = () => {
+        api.get(`/api/surveys/${surveyId}/export`, { responseType: 'blob' })
+            .then(res => {
+                const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `survey_export_${surveyId}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Failed to export responses');
+            });
+    };
+
+    const handleRemind = () => {
+        if (!confirm('Send push notifications to all targeted parents who have not responded yet?')) return;
+        setReminding(true);
+        api.post(`/api/surveys/${surveyId}/remind`)
+            .then(res => {
+                alert(`Successfully sent reminders to ${res.data?.remindedCount || 0} parents.`);
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Failed to send reminders');
+            })
+            .finally(() => setReminding(false));
+    };
+
+    const handleDelete = () => {
+        if (!confirm('Are you sure you want to delete this survey and all its responses? This cannot be undone.')) return;
+        api.delete(`/api/surveys/${surveyId}`)
+            .then(() => onBack())
+            .catch(err => {
+                console.error(err);
+                alert('Failed to delete survey');
+            });
+    };
+
+    if (loading) return <div className="page-container"><ListRowsSkeleton count={6} /></div>;
+    if (!survey) return <div className="page-container"><div className="alert alert-danger">Survey not found</div></div>;
+
+    let parsedContent;
+    try {
+        parsedContent = JSON.parse(survey.content || '[]');
+    } catch {
+        parsedContent = [];
+    }
+    const questions = Array.isArray(parsedContent) ? parsedContent : (parsedContent?.Attribute1 || []);
+
+    if (editing) {
+        return <SurveyFormScreen survey={survey} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); loadData(); }} />;
+    }
+
+    return (
+        <div className="page-container">
+            <div className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: 16 }}>
+                    <button className="btn btn-secondary" onClick={onBack} style={{ padding: '0.4rem 0.8rem', height: 'fit-content' }}>
+                        <Icon name="arrow-left" size={16} />
+                    </button>
+                    <div>
+                        <h1 className="page-title" style={{ margin: 0 }}>{survey.title}</h1>
+                        <div className="page-subtitle" dangerouslySetInnerHTML={{ __html: survey.description }}></div>
+                        <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                            <span className="badge badge-primary">{responses.length} Responses</span>
+                            <span className="badge badge-secondary">{survey.status}</span>
+                        </div>
+                    </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-secondary" onClick={() => setEditing(true)}><Icon name="edit-2" size={16} /> Edit</button>
+                    <button className="btn btn-secondary" onClick={handleExport}><Icon name="download" size={16} /> Export</button>
+                    <button className="btn btn-primary" onClick={handleRemind} disabled={reminding}><Icon name="bell" size={16} /> Remind</button>
+                    <button className="btn btn-danger" onClick={handleDelete}><Icon name="trash-2" size={16} /> Delete</button>
+                </div>
+            </div>
+
+            <div className="card" style={{ padding: 24 }}>
+                <h3 style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: 12, marginBottom: 24 }}>Analytics & Responses</h3>
+
+                {questions.map((q, idx) => {
+                    if (q.type === 'multiple_choice' || q.type === 'multichoice') {
+                        // Count frequencies
+                        const counts = {};
+                        (q.choices || q.options || []).forEach(opt => counts[opt] = 0);
+                        let totalAns = 0;
+                        responses.forEach(r => {
+                            try {
+                                const ans = JSON.parse(r.content)[q.id];
+                                if (ans) {
+                                    const opts = Array.isArray(ans) ? ans : [ans];
+                                    opts.forEach(o => {
+                                        if (counts[o] !== undefined) {
+                                            counts[o]++;
+                                            totalAns++;
+                                        }
+                                    });
+                                }
+                            } catch (e) { }
+                        });
+
+                        return (
+                            <div key={q.id || idx} style={{ marginBottom: 32 }}>
+                                <h4 style={{ marginBottom: 8 }}>{idx + 1}. {q.title}</h4>
+                                {q.description && <p style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', marginBottom: 16 }}>{q.description}</p>}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                    {(q.choices || q.options || []).map(opt => {
+                                        const count = counts[opt] || 0;
+                                        const pct = totalAns === 0 ? 0 : Math.round((count / totalAns) * 100);
+                                        return (
+                                            <div key={opt}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: 4 }}>
+                                                    <span>{opt}</span>
+                                                    <span style={{ color: 'var(--color-text-muted)' }}>{count} ({pct}%)</span>
+                                                </div>
+                                                <div style={{ height: 8, background: 'var(--color-bg-secondary)', borderRadius: 4, overflow: 'hidden' }}>
+                                                    <div style={{ height: '100%', width: `${pct}%`, background: 'var(--color-primary)', transition: 'width 0.3s' }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    } else {
+                        // Text responses
+                        const texts = responses.map(r => {
+                            try { return { parent: r.parentName, text: JSON.parse(r.content)[q.id], date: r.date }; } catch { return null; }
+                        }).filter(x => x && x.text);
+
+                        return (
+                            <div key={q.id || idx} style={{ marginBottom: 32 }}>
+                                <h4 style={{ marginBottom: 8 }}>{idx + 1}. {q.title}</h4>
+                                {q.description && <p style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', marginBottom: 16 }}>{q.description}</p>}
+                                {texts.length === 0 ? (
+                                    <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>No responses yet.</div>
+                                ) : (
+                                    <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+                                        {texts.map((t, i) => (
+                                            <div key={i} style={{ padding: 12, borderBottom: i < texts.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
+                                                <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 4 }}>
+                                                    {t.parent || 'Unknown'} - {new Date(t.date).toLocaleDateString()}
+                                                </div>
+                                                <div style={{ fontSize: '0.95rem' }}>{t.text}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    }
+                })}
+            </div>
+
+        </div>
+    );
+};
+
+const SurveysPage = () => {
+    const [surveys, setSurveys] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showCreate, setShowCreate] = useState(false);
+    const [viewId, setViewId] = useState(null);
+
+    const loadData = () => {
+        setLoading(true);
+        api.get('/api/getSurveys/user')
+            .then(res => setSurveys(res.data?.data || res.data || []))
+            .catch(err => {
+                console.error(err);
+                alert('Failed to load surveys');
+            })
+            .finally(() => setLoading(false));
+    };
+
+    useEffect(() => {
+        loadData();
+    }, []);
+
+    // Check query params for deep-linking
+    useEffect(() => {
+        const hash = window.location.hash;
+        if (hash.includes('?')) {
+            const query = new URLSearchParams(hash.split('?')[1]);
+            const sid = query.get('id');
+            if (sid) setViewId(parseInt(sid));
+        }
+    }, []);
+
+    if (viewId) {
+        return <SurveyDetailsScreen surveyId={viewId} onBack={() => {
+            setViewId(null);
+            // clear query param
+            window.history.replaceState(null, '', window.location.pathname + '#/surveys');
+            loadData();
+        }} />;
+    }
+
+    if (showCreate) {
+        return <SurveyFormScreen onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); loadData(); }} />;
+    }
+
+    return (
+        <div className="page-container">
+            <div className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                    <h1 className="page-title">Surveys</h1>
+                    <p className="page-subtitle">View active and past surveys sent to parents</p>
+                </div>
+                <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+                    <Icon name="plus" size={16} /> Create Survey
+                </button>
+            </div>
+
+            <div className="card" style={{ padding: 24 }}>
+                {loading ? <ListRowsSkeleton count={6} /> : (
+                    surveys.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--color-text-muted)' }}>
+                            <Icon name="clipboard" size={48} style={{ marginBottom: 16, opacity: 0.5 }} />
+                            <h3>No surveys found</h3>
+                            <p>You haven't created any surveys yet.</p>
+                            <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowCreate(true)}>Create Survey</button>
+                        </div>
+                    ) : (
+                        <table className="data-table data-table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Audience</th>
+                                    <th>Status</th>
+                                    <th>Responses</th>
+                                    <th>Created Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {surveys.map(survey => {
+                                    const createdDate = survey.created ? new Date(survey.created).toLocaleDateString() : 'N/A';
+                                    const status = (survey.status || 'UNKNOWN').toUpperCase();
+                                    return (
+                                        <tr key={survey.id} onClick={() => setViewId(survey.id)} style={{ cursor: 'pointer' }}>
+                                            <td>
+                                                <div style={{ fontWeight: 600 }}>{survey.title}</div>
+                                            </td>
+                                            <td>
+                                                <span className="badge badge-secondary">{survey.audience || 'Parents'}</span>
+                                            </td>
+                                            <td>
+                                                <span className={`badge ${status === 'ACTIVE' || status === 'SENT' || status === 'PUBLISHED' ? 'badge-success' : status === 'DRAFT' ? 'badge-warning' : 'badge-secondary'}`}>
+                                                    {status}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div style={{ fontWeight: 500 }}>{survey.responseCount || 0} Responses</div>
+                                            </td>
+                                            <td style={{ color: 'var(--color-text-muted)' }}>{createdDate}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    )
+                )}
+            </div>
+
+        </div>
+    );
+};
+
+// ═══════════════════════════════════════════
 //  PROFILE PAGE
 // ═══════════════════════════════════════════
 
@@ -12464,6 +12979,7 @@ const pageTitles = {
     '/feed': 'Homework & Announcements',
     '/stories': 'Stories',
     '/calendar': 'Calendar',
+    '/surveys': 'Surveys',
     '/payments': 'Payments Log',
     '/profile': 'My Profile',
     '/settings': 'Settings',
@@ -12570,6 +13086,7 @@ const DashboardLayout = ({ onLogout }) => {
         case '/feed': PageComponent = <FeedPage />; break;
         case '/stories': PageComponent = <StoriesPage />; break;
         case '/calendar': PageComponent = <CalendarPage />; break;
+        case '/surveys': PageComponent = isUserAdmin() ? <SurveysPage /> : <HomePage />; break;
         case '/payments': PageComponent = isUserAdmin() ? <PaymentsLogPage /> : <HomePage />; break;
         case '/mass-invoices': PageComponent = isUserAdmin() ? <MassInvoicesPage /> : <HomePage />; break;
         case '/email-campaigns': PageComponent = isUserAdmin() ? <EmailCampaignPage /> : <HomePage />; break;
@@ -14196,6 +14713,25 @@ const SendRemindersPage = () => {
     const [batchList, setBatchList] = useState([]);
     const [loadingList, setLoadingList] = useState(false);
 
+    const [selectedReminderBatchDetail, setSelectedReminderBatchDetail] = useState(null);
+    const [loadingReminderDetail, setLoadingReminderDetail] = useState(false);
+    const [reminderDetailFilter, setReminderDetailFilter] = useState('all');
+    const [reminderDetailSearch, setReminderDetailSearch] = useState('');
+
+    const openBatchDetail = (batch) => {
+        setSelectedReminderBatchDetail({ ...batch, items: [] });
+        setLoadingReminderDetail(true);
+        setReminderDetailFilter('all');
+        setReminderDetailSearch('');
+        api.get(`/api/students/reminders/batches/${batch.id || batch.Id}`)
+            .then(res => setSelectedReminderBatchDetail(res.data?.data || res.data))
+            .catch(err => {
+                alert('Failed to load batch details');
+                setSelectedReminderBatchDetail(null);
+            })
+            .finally(() => setLoadingReminderDetail(false));
+    };
+
     useEffect(() => {
         if (step === 0) {
             setLoadingList(true);
@@ -14461,7 +14997,7 @@ const SendRemindersPage = () => {
                                     const total_count = c.total_count || c.totalCount || c.TotalCount || 0;
                                     const failed_count = c.failed_count || c.failedCount || c.FailedCount || 0;
                                     return (
-                                        <tr key={c.id || c.Id}>
+                                        <tr key={c.id || c.Id} onClick={() => openBatchDetail(c)} style={{ cursor: 'pointer' }}>
                                             <td>{created_at ? new Date(created_at).toLocaleString() : 'N/A'}</td>
                                             <td>
                                                 <span className={`badge ${status === 'COMPLETED' ? 'badge-success' : status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
@@ -14644,6 +15180,124 @@ const SendRemindersPage = () => {
                     </p>
                     <button className="btn btn-primary" onClick={reset}>Issue More Reminders</button>
                 </div>
+            )}
+
+            {selectedReminderBatchDetail && ReactDOM.createPortal(
+                <div className="modal-overlay" onClick={(e) => e.target.className === 'modal-overlay' && setSelectedReminderBatchDetail(null)}>
+                    <div className="modal-content" style={{ width: 800, maxWidth: '90vw', height: '80vh', padding: 0, display: 'flex', flexDirection: 'column' }}>
+                        {loadingReminderDetail ? <DetailModalSkeleton /> : (() => {
+                            const d = selectedReminderBatchDetail;
+                            const created_at = d.created_at || d.createdAt || d.CreatedAt;
+                            const status = d.status || d.Status || 'UNKNOWN';
+                            const completed_count = d.completed_count || d.completedCount || d.CompletedCount || 0;
+                            const total_count = d.total_count || d.totalCount || d.TotalCount || 0;
+                            const failed_count = d.failed_count || d.failedCount || d.FailedCount || 0;
+
+                            const filteredItems = (d.items || []).filter(item => {
+                                if (reminderDetailFilter === 'completed' && item.status !== 'COMPLETED') return false;
+                                if (reminderDetailFilter === 'failed' && item.status !== 'FAILED') return false;
+                                if (reminderDetailSearch) {
+                                    const q = reminderDetailSearch.toLowerCase();
+                                    return (item.student_name || '').toLowerCase().includes(q) || (item.error_message || '').toLowerCase().includes(q);
+                                }
+                                return true;
+                            });
+
+                            return (
+                                <>
+                                    <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div>
+                                            <h2 style={{ margin: '0 0 8px 0', fontSize: '1.5rem' }}>Reminder Batch #{d.id}</h2>
+                                            <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                                                {created_at ? new Date(created_at).toLocaleString() : 'N/A'}
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                                            <span className={`badge ${status === 'COMPLETED' ? 'badge-success' : status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
+                                                {status}
+                                            </span>
+                                            <button className="btn btn-secondary" onClick={() => setSelectedReminderBatchDetail(null)} style={{ padding: 8 }}>
+                                                <Icon name="close" size={20} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ padding: '20px 28px', background: 'var(--color-bg-alt)' }}>
+                                        <div style={{ display: 'flex', gap: 32 }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: 4 }}>Target Mode</div>
+                                                <div style={{ fontWeight: 500 }}>{d.target_mode === 'classrooms' ? 'By Classrooms' : d.target_mode === 'all_enrolled' ? 'All Enrolled' : 'Specific Students'}</div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: 4 }}>Total Processed</div>
+                                                <div style={{ fontWeight: 500 }}>{total_count} Students</div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: 4 }}>Success Rate</div>
+                                                <div style={{ fontWeight: 500, color: failed_count > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                                                    {total_count > 0 ? Math.round((completed_count / total_count) * 100) : 0}% ({failed_count} Failed)
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/* Progress Bar */}
+                                        <div style={{ width: '100%', height: 8, background: 'var(--color-border)', borderRadius: 4, marginTop: 16, overflow: 'hidden', display: 'flex' }}>
+                                            <div style={{ height: '100%', width: `${total_count > 0 ? (completed_count / total_count) * 100 : 0}%`, background: 'var(--color-success)', transition: 'width 0.3s' }} />
+                                            <div style={{ height: '100%', width: `${total_count > 0 ? (failed_count / total_count) * 100 : 0}%`, background: 'var(--color-danger)', transition: 'width 0.3s' }} />
+                                        </div>
+                                    </div>
+
+                                    {/* Filters */}
+                                    <div style={{ padding: '16px 28px', display: 'flex', gap: 12, alignItems: 'center', borderBottom: '1px solid var(--color-border)' }}>
+                                        <div className="search-bar" style={{ flex: 1, maxWidth: 300, margin: 0 }}>
+                                            <Icon name="search" size={18} />
+                                            <input type="text" placeholder="Search students or errors..." value={reminderDetailSearch} onChange={e => setReminderDetailSearch(e.target.value)} />
+                                        </div>
+                                        {['all', 'completed', 'failed'].map(f => (
+                                            <button key={f} className={`btn ${reminderDetailFilter === f ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setReminderDetailFilter(f)} style={{ padding: '6px 12px', fontSize: '0.85rem' }}>
+                                                {f === 'all' ? `All (${d.items?.length || 0})` : f === 'completed' ? `Completed (${completed_count})` : `Failed (${failed_count})`}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Items Table */}
+                                    <div style={{ flex: 1, overflowY: 'auto', padding: '0 28px 24px' }}>
+                                        <table className="data-table" style={{ marginTop: 16 }}>
+                                            <thead>
+                                                <tr>
+                                                    <th>Student</th>
+                                                    <th>Status</th>
+                                                    <th>Error</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredItems.map(item => (
+                                                    <tr key={item.id}>
+                                                        <td>
+                                                            <div style={{ fontWeight: 600 }}>{item.student_name || 'Unknown'}</div>
+                                                            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>ID: {item.student_id}</div>
+                                                        </td>
+                                                        <td>
+                                                            <span className={`badge ${item.status === 'COMPLETED' ? 'badge-success' : item.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
+                                                                {item.status}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ fontSize: '0.85rem', color: item.error_message ? '#ef4444' : 'var(--color-text-muted)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.error_message || ''}>
+                                                            {item.error_message || '-'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {filteredItems.length === 0 && (
+                                                    <tr><td colSpan="3" style={{ textAlign: 'center', padding: 24, color: 'var(--color-text-muted)' }}>No items found</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>,
+                document.getElementById('app-overlay-root') || document.body
             )}
         </div>
     );
