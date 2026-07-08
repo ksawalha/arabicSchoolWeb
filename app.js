@@ -6919,7 +6919,10 @@ const SurveyFormScreen = ({ survey, onClose, onSaved }) => {
   const [loadingClassrooms, setLoadingClassrooms] = useState(isCreate);
   const [showClassroomPicker, setShowClassroomPicker] = useState(false);
   useEffect(() => {
-    api.get("/api/getLookupData").then((res) => setAllClassrooms(res.data?.classrooms || [])).catch(console.error).finally(() => setLoadingClassrooms(false));
+    api.get("/api/classrooms", { params: { col: "id,name", filters: "status eq 'Current'" } }).then((res) => {
+      const list = res.data?.data || res.data?.items || res.data?.results || res.data || [];
+      setAllClassrooms(Array.isArray(list) ? list : []);
+    }).catch(console.error).finally(() => setLoadingClassrooms(false));
   }, []);
   const addQuestion = (type) => {
     setQuestions([...questions, { id: "q_" + Date.now(), type, title: "", description: "", choices: type === "multichoice" ? [""] : [], required: true }]);
@@ -7001,17 +7004,66 @@ const SurveyFormScreen = ({ survey, onClose, onSaved }) => {
     updateQuestion(idx, "choices", newOpts);
   } }, /* @__PURE__ */ React.createElement(Icon, { name: "x", size: 14 })))), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary btn-sm", style: { alignSelf: "flex-start", marginTop: 4 }, onClick: () => updateQuestion(idx, "choices", [...q.choices || q.options || [], ""]) }, /* @__PURE__ */ React.createElement(Icon, { name: "plus", size: 14 }), " Add Option"))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: q.required, onChange: (e) => updateQuestion(idx, "required", e.target.checked) }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: "0.85rem" } }, "Required")))), questions.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 24, color: "var(--color-text-muted)" } }, "No questions added."))));
 };
+const SurveyResponsesView = ({ responses, questions }) => {
+  const [selectedResponse, setSelectedResponse] = useState(null);
+  return /* @__PURE__ */ React.createElement("div", { style: { marginTop: 48 } }, /* @__PURE__ */ React.createElement("h3", { style: { borderBottom: "1px solid var(--color-border)", paddingBottom: 12, marginBottom: 24 } }, "All Submissions"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 24, height: 600 } }, /* @__PURE__ */ React.createElement("div", { className: "card", style: { width: 350, display: "flex", flexDirection: "column", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: 16, borderBottom: "1px solid var(--color-border)", fontWeight: 600 } }, responses.length, " Submissions"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, overflowY: "auto" } }, responses.map((r, i) => /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      key: r.id || i,
+      onClick: () => setSelectedResponse(r),
+      style: {
+        padding: 16,
+        borderBottom: "1px solid var(--color-border)",
+        cursor: "pointer",
+        background: selectedResponse === r ? "var(--color-bg-secondary)" : "transparent"
+      }
+    },
+    /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 500, marginBottom: 4 } }, r.parentName || "Unknown Parent"),
+    /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: 4 } }, "Student: ", r.studentName || "Not Specified"),
+    /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.8rem", color: "var(--color-text-muted)" } }, new Date(r.date).toLocaleString())
+  )))), /* @__PURE__ */ React.createElement("div", { className: "card", style: { flex: 1, padding: 24, overflowY: "auto" } }, !selectedResponse ? /* @__PURE__ */ React.createElement("div", { style: { color: "var(--color-text-muted)", display: "flex", alignItems: "center", justifyContent: "center", height: "100%" } }, "Select a response from the list to view details") : /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h3", { style: { marginBottom: 24, borderBottom: "1px solid var(--color-border)", paddingBottom: 12 } }, "Submission from ", selectedResponse.parentName), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 24 } }, questions.map((q, idx) => {
+    let answerText = "-";
+    try {
+      const parsed = JSON.parse(selectedResponse.content || "{}");
+      const attr1 = parsed.Attribute1 || [];
+      const ansObj = attr1.find((a) => a.title === q.title && a.description === q.description);
+      const val = ansObj ? ansObj.value : parsed[q.id] || null;
+      if (val) {
+        if (q.type === "rating") {
+          const num = parseInt(val, 10);
+          if (!isNaN(num)) {
+            answerText = /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2, marginTop: 4 } }, [1, 2, 3, 4, 5].map((star) => /* @__PURE__ */ React.createElement("span", { key: star, dangerouslySetInnerHTML: { __html: window.feather.icons.star.toSvg({ width: 18, height: 18, fill: star <= num ? "#f59e0b" : "none", color: star <= num ? "#f59e0b" : "#cbd5e1" }) } })));
+          } else {
+            answerText = val;
+          }
+        } else if (Array.isArray(val)) {
+          answerText = val.join(", ");
+        } else {
+          answerText = val;
+        }
+      }
+    } catch {
+    }
+    return /* @__PURE__ */ React.createElement("div", { key: idx }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 500, marginBottom: 8, fontSize: "0.95rem" } }, idx + 1, ". ", q.title), q.description && /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: 8 } }, q.description), /* @__PURE__ */ React.createElement("div", { style: { padding: 12, background: "var(--color-bg-secondary)", borderRadius: 8, fontSize: "0.95rem" } }, answerText));
+  }))))));
+};
 const SurveyDetailsScreen = ({ surveyId, onBack }) => {
   const [survey, setSurvey] = useState(null);
   const [responses, setResponses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [reminding, setReminding] = useState(false);
+  const [allClassrooms, setAllClassrooms] = useState([]);
   const loadData = () => {
     setLoading(true);
-    api.get(`/api/surveys/${surveyId}/details`).then((res) => {
-      setSurvey(res.data?.survey);
-      setResponses(res.data?.responses || []);
+    Promise.all([
+      api.get(`/api/surveys/${surveyId}/details`),
+      api.get("/api/classrooms", { params: { col: "id,name", filters: "status eq 'Current'" } })
+    ]).then(([detailsRes, lookupRes]) => {
+      setSurvey(detailsRes.data?.survey);
+      setResponses(detailsRes.data?.responses || []);
+      const list = lookupRes.data?.data || lookupRes.data?.items || lookupRes.data?.results || lookupRes.data || [];
+      setAllClassrooms(Array.isArray(list) ? list : []);
     }).catch((err) => {
       console.error(err);
       alert("Failed to load survey details");
@@ -7068,14 +7120,17 @@ const SurveyDetailsScreen = ({ surveyId, onBack }) => {
       loadData();
     } });
   }
-  return /* @__PURE__ */ React.createElement("div", { className: "page-container" }, /* @__PURE__ */ React.createElement("div", { className: "page-header", style: { marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: onBack, style: { padding: "0.4rem 0.8rem", height: "fit-content" } }, /* @__PURE__ */ React.createElement(Icon, { name: "arrow-left", size: 16 })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "page-title", style: { margin: 0 } }, survey.title), /* @__PURE__ */ React.createElement("div", { className: "page-subtitle", dangerouslySetInnerHTML: { __html: survey.description } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 12 } }, /* @__PURE__ */ React.createElement("span", { className: "badge badge-primary" }, responses.length, " Responses"), /* @__PURE__ */ React.createElement("span", { className: "badge badge-secondary" }, survey.status)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: () => setEditing(true) }, /* @__PURE__ */ React.createElement(Icon, { name: "edit-2", size: 16 }), " Edit"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: handleExport }, /* @__PURE__ */ React.createElement(Icon, { name: "download", size: 16 }), " Export"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: handleRemind, disabled: reminding }, /* @__PURE__ */ React.createElement(Icon, { name: "bell", size: 16 }), " Remind"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-danger", onClick: handleDelete }, /* @__PURE__ */ React.createElement(Icon, { name: "trash-2", size: 16 }), " Delete"))), /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 24 } }, /* @__PURE__ */ React.createElement("h3", { style: { borderBottom: "1px solid var(--color-border)", paddingBottom: 12, marginBottom: 24 } }, "Analytics & Responses"), questions.map((q, idx) => {
+  return /* @__PURE__ */ React.createElement("div", { className: "page-container" }, /* @__PURE__ */ React.createElement("div", { className: "page-header", style: { marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: onBack, style: { padding: "0.4rem 0.8rem", height: "fit-content" } }, /* @__PURE__ */ React.createElement(Icon, { name: "arrow-left", size: 16 })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h1", { className: "page-title", style: { margin: 0 } }, survey.title), /* @__PURE__ */ React.createElement("div", { className: "page-subtitle", dangerouslySetInnerHTML: { __html: survey.description } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { className: "badge badge-primary" }, responses.length, " Responses"), /* @__PURE__ */ React.createElement("span", { className: "badge badge-secondary" }, survey.status), /* @__PURE__ */ React.createElement("span", { className: "badge", style: { background: "#f1f5f9", color: "#475569", display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Icon, { name: !survey.classrooms || survey.classrooms.length === 0 ? "globe" : "users", size: 12 }), !survey.classrooms || survey.classrooms.length === 0 ? "Public (All Parents)" : survey.classrooms.map((id) => allClassrooms.find((c) => c.id === id)?.name || `Classroom ${id}`).join(", "))))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: () => setEditing(true) }, /* @__PURE__ */ React.createElement(Icon, { name: "edit-2", size: 16 }), " Edit"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-secondary", onClick: handleExport }, /* @__PURE__ */ React.createElement(Icon, { name: "download", size: 16 }), " Export"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: handleRemind, disabled: reminding }, /* @__PURE__ */ React.createElement(Icon, { name: "bell", size: 16 }), " Remind"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-danger", onClick: handleDelete }, /* @__PURE__ */ React.createElement(Icon, { name: "trash-2", size: 16 }), " Delete"))), /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 24 } }, /* @__PURE__ */ React.createElement("h3", { style: { borderBottom: "1px solid var(--color-border)", paddingBottom: 12, marginBottom: 24 } }, "Analytics & Responses"), questions.map((q, idx) => {
     if (q.type === "multiple_choice" || q.type === "multichoice") {
       const counts = {};
       (q.choices || q.options || []).forEach((opt) => counts[opt] = 0);
       let totalAns = 0;
       responses.forEach((r) => {
         try {
-          const ans = JSON.parse(r.content)[q.id];
+          const parsed = JSON.parse(r.content || "{}");
+          const attr1 = parsed.Attribute1 || [];
+          const ansObj = attr1.find((a) => a.title === q.title && a.description === q.description);
+          const ans = ansObj ? ansObj.value : parsed[q.id] || null;
           if (ans) {
             const opts = Array.isArray(ans) ? ans : [ans];
             opts.forEach((o) => {
@@ -7093,17 +7148,44 @@ const SurveyDetailsScreen = ({ surveyId, onBack }) => {
         const pct = totalAns === 0 ? 0 : Math.round(count / totalAns * 100);
         return /* @__PURE__ */ React.createElement("div", { key: opt }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: "0.9rem", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("span", null, opt), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--color-text-muted)" } }, count, " (", pct, "%)")), /* @__PURE__ */ React.createElement("div", { style: { height: 8, background: "var(--color-bg-secondary)", borderRadius: 4, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", width: `${pct}%`, background: "var(--color-primary)", transition: "width 0.3s" } })));
       })));
+    } else if (q.type === "rating") {
+      let sum = 0;
+      let count = 0;
+      const ratings = responses.map((r) => {
+        try {
+          const parsed = JSON.parse(r.content || "{}");
+          const attr1 = parsed.Attribute1 || [];
+          const ansObj = attr1.find((a) => a.title === q.title && a.description === q.description);
+          const val = ansObj ? ansObj.value : parsed[q.id] || null;
+          if (val) {
+            const num = parseInt(val, 10);
+            if (!isNaN(num)) {
+              sum += num;
+              count++;
+              return { parent: r.parentName, student: r.studentName, rating: num, date: r.date };
+            }
+          }
+        } catch {
+        }
+        return null;
+      }).filter(Boolean);
+      const avg = count > 0 ? (sum / count).toFixed(1) : 0;
+      return /* @__PURE__ */ React.createElement("div", { key: q.id || idx, style: { marginBottom: 32 } }, /* @__PURE__ */ React.createElement("h4", { style: { marginBottom: 8 } }, idx + 1, ". ", q.title), q.description && /* @__PURE__ */ React.createElement("p", { style: { fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: 16 } }, q.description), ratings.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { color: "var(--color-text-muted)", fontSize: "0.9rem", fontStyle: "italic" } }, "No responses yet.") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "2rem", fontWeight: "bold" } }, avg), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, [1, 2, 3, 4, 5].map((star) => /* @__PURE__ */ React.createElement("span", { key: star, style: { display: "inline-flex", lineHeight: 0 }, dangerouslySetInnerHTML: { __html: window.feather.icons.star.toSvg({ width: 24, height: 24, fill: star <= Math.round(avg) ? "#f59e0b" : "none", color: star <= Math.round(avg) ? "#f59e0b" : "#cbd5e1" }) } }))), /* @__PURE__ */ React.createElement("div", { style: { color: "var(--color-text-muted)", fontSize: "0.9rem" } }, "(", count, " ratings)")), /* @__PURE__ */ React.createElement("div", { style: { maxHeight: 300, overflowY: "auto", border: "1px solid var(--color-border)", borderRadius: 8 } }, ratings.map((t, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { padding: 12, borderBottom: i < ratings.length - 1 ? "1px solid var(--color-border)" : "none" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)" } }, t.parent || "Unknown", " (Student: ", t.student || "Not Specified", ") - ", new Date(t.date).toLocaleDateString()), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2 } }, [1, 2, 3, 4, 5].map((star) => /* @__PURE__ */ React.createElement("span", { key: star, style: { display: "inline-flex", lineHeight: 0 }, dangerouslySetInnerHTML: { __html: window.feather.icons.star.toSvg({ width: 14, height: 14, fill: star <= t.rating ? "#f59e0b" : "none", color: star <= t.rating ? "#f59e0b" : "#cbd5e1" }) } })))))))));
     } else {
       const texts = responses.map((r) => {
         try {
-          return { parent: r.parentName, text: JSON.parse(r.content)[q.id], date: r.date };
+          const parsed = JSON.parse(r.content || "{}");
+          const attr1 = parsed.Attribute1 || [];
+          const ansObj = attr1.find((a) => a.title === q.title && a.description === q.description);
+          const text = ansObj ? ansObj.value : parsed[q.id] || null;
+          return { parent: r.parentName, student: r.studentName, text, date: r.date };
         } catch {
           return null;
         }
       }).filter((x) => x && x.text);
-      return /* @__PURE__ */ React.createElement("div", { key: q.id || idx, style: { marginBottom: 32 } }, /* @__PURE__ */ React.createElement("h4", { style: { marginBottom: 8 } }, idx + 1, ". ", q.title), q.description && /* @__PURE__ */ React.createElement("p", { style: { fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: 16 } }, q.description), texts.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { color: "var(--color-text-muted)", fontSize: "0.9rem", fontStyle: "italic" } }, "No responses yet.") : /* @__PURE__ */ React.createElement("div", { style: { maxHeight: 300, overflowY: "auto", border: "1px solid var(--color-border)", borderRadius: 8 } }, texts.map((t, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { padding: 12, borderBottom: i < texts.length - 1 ? "1px solid var(--color-border)" : "none" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: 4 } }, t.parent || "Unknown", " - ", new Date(t.date).toLocaleDateString()), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.95rem" } }, t.text)))));
+      return /* @__PURE__ */ React.createElement("div", { key: q.id || idx, style: { marginBottom: 32 } }, /* @__PURE__ */ React.createElement("h4", { style: { marginBottom: 8 } }, idx + 1, ". ", q.title), q.description && /* @__PURE__ */ React.createElement("p", { style: { fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: 16 } }, q.description), texts.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { color: "var(--color-text-muted)", fontSize: "0.9rem", fontStyle: "italic" } }, "No responses yet.") : /* @__PURE__ */ React.createElement("div", { style: { maxHeight: 300, overflowY: "auto", border: "1px solid var(--color-border)", borderRadius: 8 } }, texts.map((t, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { padding: 12, borderBottom: i < texts.length - 1 ? "1px solid var(--color-border)" : "none" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: 4 } }, t.parent || "Unknown", " (Student: ", t.student || "Not Specified", ") - ", new Date(t.date).toLocaleDateString()), /* @__PURE__ */ React.createElement("div", { style: { fontSize: "0.95rem" } }, t.text)))));
     }
-  })));
+  }), /* @__PURE__ */ React.createElement(SurveyResponsesView, { responses, questions })));
 };
 const SurveysPage = () => {
   const [surveys, setSurveys] = useState([]);

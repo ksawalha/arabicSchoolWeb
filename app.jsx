@@ -10888,8 +10888,11 @@ const SurveyFormScreen = ({ survey, onClose, onSaved }) => {
     const [showClassroomPicker, setShowClassroomPicker] = useState(false);
 
     useEffect(() => {
-        api.get('/api/getLookupData')
-            .then(res => setAllClassrooms(res.data?.classrooms || []))
+        api.get('/api/classrooms', { params: { col: 'id,name', filters: "status eq 'Current'" } })
+            .then(res => {
+                const list = res.data?.data || res.data?.items || res.data?.results || res.data || [];
+                setAllClassrooms(Array.isArray(list) ? list : []);
+            })
             .catch(console.error)
             .finally(() => setLoadingClassrooms(false));
     }, []);
@@ -10973,44 +10976,44 @@ const SurveyFormScreen = ({ survey, onClose, onSaved }) => {
                     <label className="form-label">Description (Optional)</label>
                     <CkEditorHtmlField value={description} onChange={setDescription} height={200} placeholder="Provide some context..." />
                 </div>
-                        <div className="form-group">
-                            <label className="form-label">Target Audience (Classrooms)</label>
-                            {loadingClassrooms ? <div className="skeleton skeleton-text" style={{ width: '100%' }} /> : (
-                                <>
-                                    {showClassroomPicker && (
-                                        <ClassroomPickerModal
-                                            type="Announcement"
-                                            classrooms={allClassrooms}
-                                            selectedIds={classrooms}
-                                            classroomsArePublic={true}
-                                            onSave={(ids) => {
-                                                setClassrooms(ids);
-                                                setShowClassroomPicker(false);
-                                            }}
-                                            onClose={() => setShowClassroomPicker(false)}
-                                        />
-                                    )}
-                                    <div
-                                        className="composer-selector-row"
-                                        onClick={() => setShowClassroomPicker(true)}
-                                    >
-                                        <Icon name={classrooms.length === 0 ? "globe" : "users"} size={20} />
-                                        <span style={{ flex: 1 }}>
-                                            {classrooms.length === 0
-                                                ? 'Public (Visible to everyone)'
-                                                : classrooms.map(id => allClassrooms.find(c => c.id === id)?.name || `Classroom ${id}`).join(', ')}
-                                        </span>
-                                        <Icon name="chevron-right" size={18} style={{ opacity: 0.5 }} />
-                                    </div>
-                                </>
+                <div className="form-group">
+                    <label className="form-label">Target Audience (Classrooms)</label>
+                    {loadingClassrooms ? <div className="skeleton skeleton-text" style={{ width: '100%' }} /> : (
+                        <>
+                            {showClassroomPicker && (
+                                <ClassroomPickerModal
+                                    type="Announcement"
+                                    classrooms={allClassrooms}
+                                    selectedIds={classrooms}
+                                    classroomsArePublic={true}
+                                    onSave={(ids) => {
+                                        setClassrooms(ids);
+                                        setShowClassroomPicker(false);
+                                    }}
+                                    onClose={() => setShowClassroomPicker(false)}
+                                />
                             )}
-                        </div>
-                        <div className="form-group">
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                                <input type="checkbox" checked={notifyParents} onChange={e => setNotifyParents(e.target.checked)} />
-                                <span>Send push notification to targeted parents</span>
-                            </label>
-                        </div>
+                            <div
+                                className="composer-selector-row"
+                                onClick={() => setShowClassroomPicker(true)}
+                            >
+                                <Icon name={classrooms.length === 0 ? "globe" : "users"} size={20} />
+                                <span style={{ flex: 1 }}>
+                                    {classrooms.length === 0
+                                        ? 'Public (Visible to everyone)'
+                                        : classrooms.map(id => allClassrooms.find(c => c.id === id)?.name || `Classroom ${id}`).join(', ')}
+                                </span>
+                                <Icon name="chevron-right" size={18} style={{ opacity: 0.5 }} />
+                            </div>
+                        </>
+                    )}
+                </div>
+                <div className="form-group">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={notifyParents} onChange={e => setNotifyParents(e.target.checked)} />
+                        <span>Send push notification to targeted parents</span>
+                    </label>
+                </div>
 
                 <div style={{ marginTop: 24, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h3 style={{ margin: 0 }}>Questions</h3>
@@ -11078,19 +11081,118 @@ const SurveyFormScreen = ({ survey, onClose, onSaved }) => {
     );
 };
 
+const SurveyResponsesView = ({ responses, questions }) => {
+    const [selectedResponse, setSelectedResponse] = useState(null);
+
+    return (
+        <div style={{ marginTop: 48 }}>
+            <h3 style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: 12, marginBottom: 24 }}>All Submissions</h3>
+            <div style={{ display: 'flex', gap: 24, height: 600 }}>
+                {/* Sidebar list */}
+                <div className="card" style={{ width: 350, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <div style={{ padding: 16, borderBottom: '1px solid var(--color-border)', fontWeight: 600 }}>
+                        {responses.length} Submissions
+                    </div>
+                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                        {responses.map((r, i) => (
+                            <div
+                                key={r.id || i}
+                                onClick={() => setSelectedResponse(r)}
+                                style={{
+                                    padding: 16,
+                                    borderBottom: '1px solid var(--color-border)',
+                                    cursor: 'pointer',
+                                    background: selectedResponse === r ? 'var(--color-bg-secondary)' : 'transparent'
+                                }}
+                            >
+                                <div style={{ fontWeight: 500, marginBottom: 4 }}>{r.parentName || 'Unknown Parent'}</div>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 4 }}>Student: {r.studentName || 'Not Specified'}</div>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{new Date(r.date).toLocaleString()}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Details view */}
+                <div className="card" style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
+                    {!selectedResponse ? (
+                        <div style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                            Select a response from the list to view details
+                        </div>
+                    ) : (
+                        <div>
+                            <h3 style={{ marginBottom: 24, borderBottom: '1px solid var(--color-border)', paddingBottom: 12 }}>
+                                Submission from {selectedResponse.parentName}
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                                {questions.map((q, idx) => {
+                                    let answerText = '-';
+                                    try {
+                                        const parsed = JSON.parse(selectedResponse.content || '{}');
+                                        const attr1 = parsed.Attribute1 || [];
+                                        const ansObj = attr1.find(a => a.title === q.title && a.description === q.description);
+                                        const val = ansObj ? ansObj.value : (parsed[q.id] || null);
+
+                                        if (val) {
+                                            if (q.type === 'rating') {
+                                                const num = parseInt(val, 10);
+                                                if (!isNaN(num)) {
+                                                    answerText = (
+                                                        <div style={{ display: 'flex', gap: 2, marginTop: 4 }}>
+                                                            {[1, 2, 3, 4, 5].map(star => (
+                                                                <span key={star} dangerouslySetInnerHTML={{ __html: window.feather.icons.star.toSvg({ width: 18, height: 18, fill: star <= num ? '#f59e0b' : 'none', color: star <= num ? '#f59e0b' : '#cbd5e1' }) }} />
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                } else {
+                                                    answerText = val;
+                                                }
+                                            } else if (Array.isArray(val)) {
+                                                answerText = val.join(', ');
+                                            } else {
+                                                answerText = val;
+                                            }
+                                        }
+                                    } catch { }
+
+                                    return (
+                                        <div key={idx}>
+                                            <div style={{ fontWeight: 500, marginBottom: 8, fontSize: '0.95rem' }}>{idx + 1}. {q.title}</div>
+                                            {q.description && <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 8 }}>{q.description}</div>}
+                                            <div style={{ padding: 12, background: 'var(--color-bg-secondary)', borderRadius: 8, fontSize: '0.95rem' }}>
+                                                {answerText}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const SurveyDetailsScreen = ({ surveyId, onBack }) => {
     const [survey, setSurvey] = useState(null);
     const [responses, setResponses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(false);
     const [reminding, setReminding] = useState(false);
+    const [allClassrooms, setAllClassrooms] = useState([]);
 
     const loadData = () => {
         setLoading(true);
-        api.get(`/api/surveys/${surveyId}/details`)
-            .then(res => {
-                setSurvey(res.data?.survey);
-                setResponses(res.data?.responses || []);
+        Promise.all([
+            api.get(`/api/surveys/${surveyId}/details`),
+            api.get('/api/classrooms', { params: { col: 'id,name', filters: "status eq 'Current'" } })
+        ])
+            .then(([detailsRes, lookupRes]) => {
+                setSurvey(detailsRes.data?.survey);
+                setResponses(detailsRes.data?.responses || []);
+                const list = lookupRes.data?.data || lookupRes.data?.items || lookupRes.data?.results || lookupRes.data || [];
+                setAllClassrooms(Array.isArray(list) ? list : []);
             })
             .catch(err => {
                 console.error(err);
@@ -11171,9 +11273,13 @@ const SurveyDetailsScreen = ({ surveyId, onBack }) => {
                     <div>
                         <h1 className="page-title" style={{ margin: 0 }}>{survey.title}</h1>
                         <div className="page-subtitle" dangerouslySetInnerHTML={{ __html: survey.description }}></div>
-                        <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                        <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
                             <span className="badge badge-primary">{responses.length} Responses</span>
                             <span className="badge badge-secondary">{survey.status}</span>
+                            <span className="badge" style={{ background: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <Icon name={(!survey.classrooms || survey.classrooms.length === 0) ? "globe" : "users"} size={12} />
+                                {(!survey.classrooms || survey.classrooms.length === 0) ? 'Public (All Parents)' : survey.classrooms.map(id => allClassrooms.find(c => c.id === id)?.name || `Classroom ${id}`).join(', ')}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -11196,7 +11302,10 @@ const SurveyDetailsScreen = ({ surveyId, onBack }) => {
                         let totalAns = 0;
                         responses.forEach(r => {
                             try {
-                                const ans = JSON.parse(r.content)[q.id];
+                                const parsed = JSON.parse(r.content || '{}');
+                                const attr1 = parsed.Attribute1 || [];
+                                const ansObj = attr1.find(a => a.title === q.title && a.description === q.description);
+                                const ans = ansObj ? ansObj.value : (parsed[q.id] || null);
                                 if (ans) {
                                     const opts = Array.isArray(ans) ? ans : [ans];
                                     opts.forEach(o => {
@@ -11232,10 +11341,77 @@ const SurveyDetailsScreen = ({ surveyId, onBack }) => {
                                 </div>
                             </div>
                         );
+                    } else if (q.type === 'rating') {
+                        // Rating responses
+                        let sum = 0;
+                        let count = 0;
+                        const ratings = responses.map(r => {
+                            try {
+                                const parsed = JSON.parse(r.content || '{}');
+                                const attr1 = parsed.Attribute1 || [];
+                                const ansObj = attr1.find(a => a.title === q.title && a.description === q.description);
+                                const val = ansObj ? ansObj.value : (parsed[q.id] || null);
+                                if (val) {
+                                    const num = parseInt(val, 10);
+                                    if (!isNaN(num)) {
+                                        sum += num;
+                                        count++;
+                                        return { parent: r.parentName, student: r.studentName, rating: num, date: r.date };
+                                    }
+                                }
+                            } catch { }
+                            return null;
+                        }).filter(Boolean);
+
+                        const avg = count > 0 ? (sum / count).toFixed(1) : 0;
+
+                        return (
+                            <div key={q.id || idx} style={{ marginBottom: 32 }}>
+                                <h4 style={{ marginBottom: 8 }}>{idx + 1}. {q.title}</h4>
+                                {q.description && <p style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', marginBottom: 16 }}>{q.description}</p>}
+                                {ratings.length === 0 ? (
+                                    <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>No responses yet.</div>
+                                ) : (
+                                    <>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{avg}</div>
+                                            <div style={{ display: 'flex', gap: 4 }}>
+                                                {[1, 2, 3, 4, 5].map(star => (
+                                                    <span key={star} style={{ display: 'inline-flex', lineHeight: 0 }} dangerouslySetInnerHTML={{ __html: window.feather.icons.star.toSvg({ width: 24, height: 24, fill: star <= Math.round(avg) ? '#f59e0b' : 'none', color: star <= Math.round(avg) ? '#f59e0b' : '#cbd5e1' }) }} />
+                                                ))}
+                                            </div>
+                                            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>({count} ratings)</div>
+                                        </div>
+                                        <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+                                            {ratings.map((t, i) => (
+                                                <div key={i} style={{ padding: 12, borderBottom: i < ratings.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                                        <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                                                            {t.parent || 'Unknown'} (Student: {t.student || 'Not Specified'}) - {new Date(t.date).toLocaleDateString()}
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: 2 }}>
+                                                            {[1, 2, 3, 4, 5].map(star => (
+                                                                <span key={star} style={{ display: 'inline-flex', lineHeight: 0 }} dangerouslySetInnerHTML={{ __html: window.feather.icons.star.toSvg({ width: 14, height: 14, fill: star <= t.rating ? '#f59e0b' : 'none', color: star <= t.rating ? '#f59e0b' : '#cbd5e1' }) }} />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        );
                     } else {
                         // Text responses
                         const texts = responses.map(r => {
-                            try { return { parent: r.parentName, text: JSON.parse(r.content)[q.id], date: r.date }; } catch { return null; }
+                            try {
+                                const parsed = JSON.parse(r.content || '{}');
+                                const attr1 = parsed.Attribute1 || [];
+                                const ansObj = attr1.find(a => a.title === q.title && a.description === q.description);
+                                const text = ansObj ? ansObj.value : (parsed[q.id] || null);
+                                return { parent: r.parentName, student: r.studentName, text: text, date: r.date };
+                            } catch { return null; }
                         }).filter(x => x && x.text);
 
                         return (
@@ -11249,7 +11425,7 @@ const SurveyDetailsScreen = ({ surveyId, onBack }) => {
                                         {texts.map((t, i) => (
                                             <div key={i} style={{ padding: 12, borderBottom: i < texts.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
                                                 <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 4 }}>
-                                                    {t.parent || 'Unknown'} - {new Date(t.date).toLocaleDateString()}
+                                                    {t.parent || 'Unknown'} (Student: {t.student || 'Not Specified'}) - {new Date(t.date).toLocaleDateString()}
                                                 </div>
                                                 <div style={{ fontSize: '0.95rem' }}>{t.text}</div>
                                             </div>
@@ -11260,6 +11436,8 @@ const SurveyDetailsScreen = ({ surveyId, onBack }) => {
                         );
                     }
                 })}
+
+                <SurveyResponsesView responses={responses} questions={questions} />
             </div>
 
         </div>
