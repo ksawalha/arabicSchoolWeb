@@ -776,8 +776,16 @@ const navItems = [
     { id: '/feed', label: 'Homework & Announcements', icon: 'inbox' },
     { id: '/stories', label: 'Stories', icon: 'book-open' },
     { id: '/calendar', label: 'Calendar', icon: 'calendar' },
-    { id: '/surveys', label: 'Surveys', icon: 'clipboard' },
-    { id: '/email-campaigns', label: 'Email Campaigns', icon: 'mail' },
+    {
+        id: 'communication-group',
+        label: 'Communication',
+        icon: 'message-circle',
+        subItems: [
+            { id: '/surveys', label: 'Surveys', icon: 'clipboard' },
+            { id: '/email-campaigns', label: 'Email Campaigns', icon: 'mail' },
+            { id: '/appointments', label: 'Appointments', icon: 'clock' },
+        ]
+    },
     {
         id: 'invoices-group',
         label: 'Invoices',
@@ -13268,6 +13276,7 @@ const DashboardLayout = ({ onLogout }) => {
         case '/payments': PageComponent = isUserAdmin() ? <PaymentsLogPage /> : <HomePage />; break;
         case '/mass-invoices': PageComponent = isUserAdmin() ? <MassInvoicesPage /> : <HomePage />; break;
         case '/email-campaigns': PageComponent = isUserAdmin() ? <EmailCampaignPage /> : <HomePage />; break;
+        case '/appointments': PageComponent = isUserAdmin() ? <AppointmentsPage /> : <HomePage />; break;
         case '/send-reminders': PageComponent = isUserAdmin() ? <SendRemindersPage /> : <HomePage />; break;
         case '/profile': PageComponent = <ProfilePage onLogout={onLogout} />; break;
         case '/settings': PageComponent = <SettingsPage />; break;
@@ -15793,6 +15802,984 @@ const PaymentsLogPage = () => {
         </div>
     );
 };
+
+
+// ─── CUSTOM COMPONENTS ────────────────────────────────────────────────────────
+const DropdownPortal = ({ children }) => {
+    const [target, setTarget] = useState(null);
+    useEffect(() => {
+        let root = document.getElementById('dropdown-portal-root');
+        if (!root) {
+            root = document.createElement('div');
+            root.id = 'dropdown-portal-root';
+            document.body.appendChild(root);
+        }
+        setTarget(root);
+    }, []);
+    if (!target) return null;
+    return ReactDOM.createPortal(children, target);
+};
+
+const MultiSelectDropdown = ({ options, selected, onChange, placeholder = 'Select...', disabled = false }) => {
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef(null);
+    const dropdownRef = useRef(null);
+    const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+
+    const handleOpen = () => {
+        if (disabled) return;
+        if (!open && containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            setCoords({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, width: rect.width });
+        }
+        setOpen(!open);
+    };
+
+    useEffect(() => {
+        const handleScroll = () => {
+            if (open && containerRef.current) {
+                const rect = containerRef.current.getBoundingClientRect();
+                setCoords({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, width: rect.width });
+            }
+        };
+        if (open) {
+            window.addEventListener('scroll', handleScroll, true);
+        }
+        return () => window.removeEventListener('scroll', handleScroll, true);
+    }, [open]);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (
+                containerRef.current && !containerRef.current.contains(event.target) &&
+                (!dropdownRef.current || !dropdownRef.current.contains(event.target))
+            ) {
+                setOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside, true);
+        return () => document.removeEventListener('mousedown', handleClickOutside, true);
+    }, []);
+
+    const toggle = (val) => {
+        if (selected.includes(val)) {
+            onChange(selected.filter(x => x !== val));
+        } else {
+            onChange([...selected, val]);
+        }
+    };
+
+    return (
+        <div ref={containerRef} style={{ width: '100%', opacity: disabled ? 0.6 : 1 }}>
+            <div className={`form-input ${disabled ? 'disabled' : ''}`} onClick={handleOpen} style={{ cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 38, background: disabled ? '#f9fafb' : '#fff' }}>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, color: selected.length ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                    {selected.length === 0 ? placeholder : `${selected.length} selected`}
+                </div>
+                <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} style={{ color: 'var(--text-muted)' }} />
+            </div>
+            {open && (
+                <DropdownPortal>
+                    <div ref={dropdownRef} style={{ position: 'absolute', top: coords.top + 4, left: coords.left, width: coords.width, zIndex: 99999, background: '#fff', border: '1px solid var(--border-color)', borderRadius: 8, maxHeight: 250, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                        {options.length === 0 && <div style={{ padding: '8px 12px', color: '#888', fontSize: 13 }}>No options available</div>}
+                        {options.map(opt => (
+                            <div key={opt.value} onClick={() => toggle(opt.value)} style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', borderBottom: '1px solid var(--border-color)', background: selected.includes(opt.value) ? 'rgba(var(--primary-rgb, 79,70,229), 0.05)' : '#fff' }}>
+                                <input type="checkbox" checked={selected.includes(opt.value)} readOnly style={{ cursor: 'pointer', margin: 0 }} />
+                                <span style={{ fontSize: 13, userSelect: 'none' }}>{opt.label}</span>
+                            </div>
+                        ))}
+                    </div>
+                </DropdownPortal>
+            )}
+        </div>
+    );
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── ADMIN SLOT MANAGER ───────────────────────────────────────────────────────
+const AdminSlotsManager = () => {
+    const today = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const toYMD = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    // Filter state
+    const [filterDate, setFilterDate] = useState(toYMD(today));
+    const [allClassrooms, setAllClassrooms] = useState([]);
+    const [allUsers, setAllUsers] = useState([]);
+    const [selClassrooms, setSelClassrooms] = useState([]);
+    const [selUsers, setSelUsers] = useState([]);
+
+    // Slot list state
+    const [slots, setSlots] = useState([]);
+    const [loadingSlots, setLoadingSlots] = useState(false);
+    const [checked, setChecked] = useState(new Set());
+
+    // Generate form state
+    const [showGenModal, setShowGenModal] = useState(false);
+    const [genStartDate, setGenStartDate] = useState(toYMD(today));
+    const [genEndDate, setGenEndDate] = useState(toYMD(today));
+    const [genDays, setGenDays] = useState([]);
+    const [genStartTime, setGenStartTime] = useState('09:00');
+    const [genDuration, setGenDuration] = useState(30);
+    const [genInterval, setGenInterval] = useState(5);
+    const [genCount, setGenCount] = useState(1);
+    const [genClassrooms, setGenClassrooms] = useState([]);
+    const [genUsers, setGenUsers] = useState([]);
+    const [genPreview, setGenPreview] = useState([]);
+    const [genLoading, setGenLoading] = useState(false);
+    const [genResult, setGenResult] = useState(null);
+
+    const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    useEffect(() => {
+        api.get('/api/classrooms', { params: { col: 'id,name', filters: "status eq 'Current'", limit: 200 } })
+            .then(r => setAllClassrooms(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : [])))
+            .catch(() => { });
+        api.get('/api/users', { params: { col: 'id,name', role: 'Teacher', status: 'Current', limit: 300 } })
+            .then(r => setAllUsers(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : [])))
+            .catch(() => { });
+    }, []);
+
+    const fetchSlots = async () => {
+        if (!filterDate) return;
+        setLoadingSlots(true);
+        setChecked(new Set());
+        try {
+            const params = { date: filterDate };
+            if (selClassrooms.length) params.classroomIds = selClassrooms.join(',');
+            if (selUsers.length) params.userIds = selUsers.join(',');
+            const res = await api.get('/api/appointments/admin/slots', { params });
+            setSlots(res.data?.slots || []);
+        } catch (e) {
+            alert('Failed to load slots: ' + (e.response?.data?.message || e.message));
+        } finally {
+            setLoadingSlots(false);
+        }
+    };
+
+    const deleteSlot = async (slotId) => {
+        if (!window.confirm('Delete this slot?')) return;
+        try {
+            await api.delete(`/api/appointments/admin/slots/${slotId}`);
+            fetchSlots();
+        } catch (e) {
+            alert('Failed to delete slot: ' + (e.response?.data?.message || e.message));
+        }
+    };
+
+    const bulkDelete = async () => {
+        if (!checked.size) return;
+        if (!window.confirm(`Delete ${checked.size} selected slot(s)?`)) return;
+        try {
+            const res = await api.delete('/api/appointments/admin/slots', { data: { slotIds: [...checked] } });
+            const d = res.data;
+            const msg = `Deleted ${d.deleted} slot(s).` + (d.skipped ? ` Skipped ${d.skipped} reserved slot(s).` : '');
+            alert(msg);
+            fetchSlots();
+        } catch (e) {
+            alert('Bulk delete failed: ' + (e.response?.data?.message || e.message));
+        }
+    };
+
+    const selectAllAvailable = () => {
+        const available = slots.filter(s => s.status === 'available').map(s => s.id);
+        setChecked(new Set(available));
+    };
+
+    const toggleCheck = (id) => {
+        setChecked(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    const buildPreview = () => {
+        if (!genStartDate || !genEndDate || !genDays.length || !genStartTime || genDuration <= 0 || genCount <= 0) {
+            setGenPreview([]);
+            return;
+        }
+        const preview = [];
+        const [sh, sm] = genStartTime.split(':').map(Number);
+        const sd = new Date(genStartDate + 'T00:00:00');
+        const ed = new Date(genEndDate + 'T00:00:00');
+
+        let cur = new Date(sd);
+        while (cur <= ed) {
+            const dow = cur.getDay();
+            if (genDays.includes(dow)) {
+                for (let i = 0; i < genCount; i++) {
+                    const slotStartMin = sh * 60 + sm + i * (genDuration + genInterval);
+                    const slotEndMin = slotStartMin + genDuration;
+                    const sH = Math.floor(slotStartMin / 60), sM = slotStartMin % 60;
+                    const eH = Math.floor(slotEndMin / 60), eM = slotEndMin % 60;
+                    const ymd = `${cur.getFullYear()}-${pad(cur.getMonth() + 1)}-${pad(cur.getDate())}`;
+                    preview.push({ date: ymd, start: `${pad(sH)}:${pad(sM)}`, end: `${pad(eH)}:${pad(eM)}` });
+                }
+            }
+            cur.setDate(cur.getDate() + 1);
+        }
+        setGenPreview(preview);
+    };
+
+    useEffect(() => { buildPreview(); }, [genStartDate, genEndDate, genDays, genStartTime, genDuration, genInterval, genCount]);
+
+    const handleGenerate = async () => {
+        if (!genStartDate || !genEndDate || !genDays.length || !genStartTime || genDuration <= 0 || genCount <= 0) {
+            alert('Please fill in all required fields.');
+            return;
+        }
+        setGenLoading(true);
+        setGenResult(null);
+        try {
+            const payload = {
+                startDate: genStartDate,
+                endDate: genEndDate,
+                daysOfWeek: genDays,
+                startTime: genStartTime,
+                duration: Number(genDuration),
+                interval: Number(genInterval),
+                count: Number(genCount),
+                classroomIds: genClassrooms.length ? genClassrooms : null,
+                userIds: genUsers.length ? genUsers : null,
+            };
+            const res = await api.post('/api/appointments/admin/slots/generate', payload);
+            setGenResult({ success: true, message: res.data?.message || 'Done' });
+            setTimeout(() => {
+                setShowGenModal(false);
+                setGenResult(null);
+                fetchSlots(); // Refresh slots after successful generation
+            }, 1500);
+        } catch (e) {
+            setGenResult({ success: false, message: e.response?.data?.message || e.message });
+        } finally {
+            setGenLoading(false);
+        }
+    };
+
+    const toggleMulti = (val, arr, setArr) => {
+        setArr(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]);
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* Filter Panel */}
+            <div className="card" style={{ background: 'var(--card-bg)', borderRadius: 12, padding: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
+                        View Slots
+                    </h3>
+                    <button className="btn btn-primary" onClick={() => setShowGenModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Icon name="plus-circle" size={14} />
+                        Generate Slots
+                    </button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+                    <div>
+                        <label className="form-label">Date</label>
+                        <input type="date" className="form-input" value={filterDate} onChange={e => setFilterDate(e.target.value)} style={{ width: 160 }} />
+                    </div>
+                    <div>
+                        <label className="form-label">Classroom(s)</label>
+                        <MultiSelectDropdown
+                            options={allClassrooms.map(c => ({ value: c.Id || c.id, label: c.name || c.Name }))}
+                            selected={selClassrooms}
+                            onChange={setSelClassrooms}
+                            placeholder="All Classrooms"
+                        />
+                    </div>
+                    <div>
+                        <label className="form-label">User(s) / Teacher(s)</label>
+                        <MultiSelectDropdown
+                            options={allUsers.map(u => ({ value: u.id || u.Id, label: u.name || u.Name }))}
+                            selected={selUsers}
+                            onChange={setSelUsers}
+                            placeholder="All Users"
+                        />
+                    </div>
+                    <div>
+                        <button className="btn btn-primary" onClick={fetchSlots} disabled={!filterDate || loadingSlots}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', height: 38 }}>
+                            <Icon name="refresh-cw" size={14} />
+                            {loadingSlots ? 'Loading...' : 'Load Slots'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Bulk Actions Bar */}
+            {slots.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: 'var(--sidebar-bg)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                    <input type="checkbox" id="chk-all-slots"
+                        checked={checked.size > 0 && checked.size === slots.filter(s => s.status === 'available').length}
+                        onChange={e => e.target.checked ? selectAllAvailable() : setChecked(new Set())} />
+                    <label htmlFor="chk-all-slots" style={{ fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+                        Select all available ({slots.filter(s => s.status === 'available').length})
+                    </label>
+                    {checked.size > 0 && (
+                        <button className="btn btn-danger btn-sm" onClick={bulkDelete} style={{ marginLeft: 8 }}>
+                            <Icon name="trash-2" size={13} style={{ marginRight: 4 }} />
+                            Delete Selected ({checked.size})
+                        </button>
+                    )}
+                    <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>
+                        {slots.length} slot(s) found &bull; {slots.filter(s => s.status === 'reserved').length} reserved &bull; {slots.filter(s => s.status === 'available').length} available
+                    </span>
+                </div>
+            )}
+
+            {/* Slot Table */}
+            {loadingSlots && <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Loading slots...</div>}
+            {!loadingSlots && slots.length === 0 && (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', background: 'var(--card-bg)', borderRadius: 12, border: '1px solid var(--border-color)' }}>
+                    <div>Select a date and click "Load Slots" to view appointment slots.</div>
+                </div>
+            )}
+            {!loadingSlots && slots.length > 0 && (
+                <div className="card" style={{ background: 'var(--card-bg)', borderRadius: 12, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                            <tr style={{ background: 'var(--sidebar-bg)', borderBottom: '2px solid var(--border-color)' }}>
+                                <th style={{ padding: '10px 12px', textAlign: 'left', width: 36 }}></th>
+                                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Time</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Status</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Classrooms</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Users</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Reservations</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'center', width: 80 }}>Delete</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {slots.map((slot, idx) => {
+                                const isReserved = slot.status === 'reserved';
+                                const isChecked = checked.has(slot.id);
+                                return (
+                                    <tr key={slot.id} style={{
+                                        borderBottom: '1px solid var(--border-color)',
+                                        background: isChecked ? 'rgba(99,102,241,0.06)' : idx % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)',
+                                        transition: 'background 0.15s'
+                                    }}>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            {!isReserved && (
+                                                <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(slot.id)} />
+                                            )}
+                                        </td>
+                                        <td style={{ padding: '10px 12px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                            {slot.start} &ndash; {slot.end}
+                                        </td>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            <span style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 5,
+                                                padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                                                background: isReserved ? '#FEE2E2' : '#DCFCE7',
+                                                color: isReserved ? '#DC2626' : '#16A34A'
+                                            }}>
+                                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: isReserved ? '#DC2626' : '#16A34A', display: 'inline-block' }} />
+                                                {isReserved ? 'Reserved' : 'Available'}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            {slot.unrestricted ? (
+                                                <span style={{ fontStyle: 'italic', fontSize: 11, color: 'var(--text-muted)' }}>All</span>
+                                            ) : slot.classrooms && slot.classrooms.length > 0 ? (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                                    {slot.classrooms.map((c, i) => (
+                                                        <span key={i} style={{ background: '#EFF6FF', color: '#1D4ED8', padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 500 }}>{c.name}</span>
+                                                    ))}
+                                                </div>
+                                            ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                                        </td>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            {slot.users && slot.users.length > 0 ? (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                                    {slot.users.map((u, i) => (
+                                                        <span key={i} style={{ background: '#FDF4FF', color: '#7C3AED', padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 500 }}>{u.name}</span>
+                                                    ))}
+                                                </div>
+                                            ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                                        </td>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            {slot.reservations && slot.reservations.length > 0 ? (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                    {slot.reservations.map((r, i) => (
+                                                        <div key={i} style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                                                            <strong>{r.studentName}</strong>
+                                                            <span style={{ marginLeft: 4, color: 'var(--text-muted)' }}>/ {r.teacherName}</span>
+                                                            <span style={{
+                                                                marginLeft: 6, padding: '1px 6px', borderRadius: 8, fontSize: 10,
+                                                                background: r.status === 'Booked' ? '#DCFCE7' : '#F3F4F6',
+                                                                color: r.status === 'Booked' ? '#16A34A' : '#6B7280'
+                                                            }}>{r.status}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11 }}>None</span>}
+                                        </td>
+                                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                            <button className="btn btn-danger btn-sm"
+                                                disabled={isReserved}
+                                                onClick={() => deleteSlot(slot.id)}
+                                                title={isReserved ? 'Cannot delete - has active reservation' : 'Delete slot'}
+                                                style={{ opacity: isReserved ? 0.35 : 1, padding: '4px 10px' }}>
+                                                <Icon name="trash-2" size={13} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Generate Slots Modal */}
+            {showGenModal && (
+                <GlobalCanvasPortal>
+                    <div className="modal-overlay" onClick={() => setShowGenModal(false)}>
+                        <div className="modal-box" style={{ maxWidth: 650, width: '90%', padding: 0 }} onClick={e => e.stopPropagation()}>
+                            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    Generate Recurring Slots
+                                </h3>
+                            </div>
+
+                            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 24, maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+                                {/* Date range */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                    <div>
+                                        <label className="form-label">Start Date <span style={{ color: '#ef4444' }}>*</span></label>
+                                        <input type="date" className="form-input" value={genStartDate} onChange={e => setGenStartDate(e.target.value)} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">End Date <span style={{ color: '#ef4444' }}>*</span></label>
+                                        <input type="date" className="form-input" value={genEndDate} onChange={e => setGenEndDate(e.target.value)} />
+                                    </div>
+                                </div>
+
+                                {/* Days of week */}
+                                <div>
+                                    <label className="form-label">Days of Week <span style={{ color: '#ef4444' }}>*</span></label>
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                        {DAY_NAMES.map((dn, i) => (
+                                            <button key={i} type="button"
+                                                onClick={() => toggleMulti(i, genDays, setGenDays)}
+                                                style={{
+                                                    padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+                                                    border: '2px solid',
+                                                    borderColor: genDays.includes(i) ? 'var(--primary-color)' : 'var(--border-color)',
+                                                    background: genDays.includes(i) ? 'var(--primary-color)' : 'transparent',
+                                                    color: genDays.includes(i) ? '#fff' : 'var(--text-secondary)',
+                                                    cursor: 'pointer', transition: 'all 0.15s'
+                                                }}>
+                                                {dn}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Time settings */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 16 }}>
+                                    <div>
+                                        <label className="form-label">Start Time <span style={{ color: '#ef4444' }}>*</span></label>
+                                        <input type="time" className="form-input" value={genStartTime} onChange={e => setGenStartTime(e.target.value)} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Duration (min) <span style={{ color: '#ef4444' }}>*</span></label>
+                                        <input type="number" className="form-input" min={5} max={180} value={genDuration} onChange={e => setGenDuration(parseInt(e.target.value) || 30)} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Gap Between (min)</label>
+                                        <input type="number" className="form-input" min={0} max={120} value={genInterval} onChange={e => setGenInterval(parseInt(e.target.value) || 0)} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Slots/Day <span style={{ color: '#ef4444' }}>*</span></label>
+                                        <input type="number" className="form-input" min={1} max={20} value={genCount} onChange={e => setGenCount(parseInt(e.target.value) || 1)} />
+                                    </div>
+                                </div>
+
+                                {/* Restrictions */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, background: 'var(--sidebar-bg)', padding: 16, borderRadius: 8 }}>
+                                    <div>
+                                        <label className="form-label" style={{ marginBottom: 4 }}>Classroom Restriction</label>
+                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>Empty = all classrooms</div>
+                                        <MultiSelectDropdown
+                                            options={allClassrooms.map(c => ({ value: c.Id || c.id, label: c.name || c.Name }))}
+                                            selected={genClassrooms}
+                                            onChange={setGenClassrooms}
+                                            placeholder="Select Classrooms"
+                                            disabled={genUsers.length > 0}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="form-label" style={{ marginBottom: 4 }}>Teacher Restriction</label>
+                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>Empty = all teachers</div>
+                                        <MultiSelectDropdown
+                                            options={allUsers.map(u => ({ value: u.id || u.Id, label: u.name || u.Name }))}
+                                            selected={genUsers}
+                                            onChange={setGenUsers}
+                                            placeholder="Select Teachers"
+                                            disabled={genClassrooms.length > 0}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Preview */}
+                                {genPreview.length > 0 && (
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                            <label className="form-label" style={{ margin: 0 }}>Preview</label>
+                                            <span style={{ background: '#EFF6FF', color: '#1D4ED8', padding: '2px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600 }}>
+                                                {genPreview.length} slot{genPreview.length !== 1 ? 's' : ''} will be created
+                                            </span>
+                                        </div>
+                                        <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 8 }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                                <thead style={{ position: 'sticky', top: 0, background: 'var(--sidebar-bg)', zIndex: 1 }}>
+                                                    <tr>
+                                                        <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>Date</th>
+                                                        <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>Start</th>
+                                                        <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>End</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {genPreview.map((p, i) => (
+                                                        <tr key={i} style={{ borderBottom: i < genPreview.length - 1 ? '1px solid var(--border-color)' : 'none', background: i % 2 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
+                                                            <td style={{ padding: '6px 12px' }}>{p.date}</td>
+                                                            <td style={{ padding: '6px 12px' }}>{p.start}</td>
+                                                            <td style={{ padding: '6px 12px' }}>{p.end}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {genResult && (
+                                    <div style={{
+                                        padding: '10px 16px', borderRadius: 8, fontWeight: 600, fontSize: 13,
+                                        background: genResult.success ? '#DCFCE7' : '#FEE2E2',
+                                        color: genResult.success ? '#15803D' : '#DC2626'
+                                    }}>
+                                        {genResult.success ? 'Success: ' : 'Error: '}{genResult.message}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 10, background: 'var(--sidebar-bg)' }}>
+                                <button className="btn-secondary" onClick={() => setShowGenModal(false)}>Cancel</button>
+                                <button className="btn btn-primary"
+                                    disabled={genLoading || genPreview.length === 0 || (genClassrooms.length === 0 && genUsers.length === 0)}
+                                    onClick={handleGenerate}
+                                    style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: (genLoading || genPreview.length === 0 || (genClassrooms.length === 0 && genUsers.length === 0)) ? 0.5 : 1 }}>
+                                    <Icon name={genLoading ? 'loader' : ''} size={14} />
+                                    {genLoading ? 'Generating...' : ('Generate ' + (genPreview.length > 0 ? genPreview.length + ' ' : '') + 'Slot' + (genPreview.length !== 1 ? 's' : ''))}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </GlobalCanvasPortal>
+            )}
+        </div>
+    );
+};
+// ─── END ADMIN SLOT MANAGER ───────────────────────────────────────────────────
+
+
+const AppointmentsPage = () => {
+    const [activeTab, setActiveTab] = useState('calendar');
+
+    const [visibleMonth, setVisibleMonth] = useState(() => {
+        const d = new Date();
+        d.setDate(1);
+        return d;
+    });
+    const [selectedDay, setSelectedDay] = useState(null);
+    const [appointments, setAppointments] = useState({});
+    const [loading, setLoading] = useState(false);
+
+    const [rescheduleApt, setRescheduleApt] = useState(null);
+    const [availableDates, setAvailableDates] = useState([]);
+    const [selectedRescheduleDate, setSelectedRescheduleDate] = useState(null);
+    const [availableSlots, setAvailableSlots] = useState([]);
+    const [selectedSlot, setSelectedSlot] = useState(null);
+    const [modalLoading, setModalLoading] = useState(false);
+
+    const pad = n => n.toString().padStart(2, '0');
+    const toYMD = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    const formatDDMMYYYY = (val) => {
+        if (!val) return '';
+        if (val instanceof Date) {
+            return `${pad(val.getDate())}/${pad(val.getMonth() + 1)}/${val.getFullYear()}`;
+        }
+        const str = String(val);
+        const parts = str.split('T')[0].split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        return str;
+    };
+
+    const loadAppointments = async () => {
+        setLoading(true);
+        try {
+            const y = visibleMonth.getFullYear();
+            const m = visibleMonth.getMonth();
+            const first = new Date(y, m, 1);
+            const last = new Date(y, m + 1, 0);
+
+            const startDay = new Date(first);
+            startDay.setDate(first.getDate() - first.getDay());
+
+            const endDay = new Date(last);
+            endDay.setDate(last.getDate() + (6 - last.getDay()));
+
+            const res = await api.get('/api/appointments/user/reservations', {
+                params: { start: toYMD(startDay), end: toYMD(endDay) }
+            });
+
+            const map = {};
+            if (Array.isArray(res.data)) {
+                res.data.forEach(a => {
+                    const dt = a.date ? a.date.split('T')[0] : (a.Date ? a.Date.split('T')[0] : null);
+                    if (dt) {
+                        if (!map[dt]) map[dt] = [];
+                        map[dt].push(a);
+                    }
+                });
+            }
+            setAppointments(map);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'calendar') loadAppointments();
+    }, [visibleMonth, activeTab]);
+
+    const changeMonth = (diff) => {
+        const d = new Date(visibleMonth);
+        d.setMonth(d.getMonth() + diff);
+        setVisibleMonth(d);
+        setSelectedDay(null);
+    };
+
+    const handleAction = async (id, status) => {
+        if (!window.confirm(`Are you sure you want to mark this appointment as ${status}?`)) return;
+        try {
+            await api.post(`/api/appointments/user/reservations/${id}/reschedule`, { status });
+            loadAppointments();
+        } catch (e) {
+            alert('Failed to update status.');
+        }
+    };
+
+    const days = [];
+    let d = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
+    d.setDate(d.getDate() - d.getDay());
+    const last = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0);
+    while (d <= last || d.getDay() !== 0) {
+        days.push(new Date(d));
+        d.setDate(d.getDate() + 1);
+    }
+
+    const openReschedule = async (apt) => {
+        setRescheduleApt(apt);
+        setSelectedRescheduleDate(null);
+        setAvailableSlots([]);
+        setSelectedSlot(null);
+        setModalLoading(true);
+        try {
+            const today = new Date();
+            const cid = apt.student?.classroomId || apt.classroomId || apt.ClassroomId;
+            if (!cid) throw new Error("Missing classroom id on appointment");
+            const res = await api.get(`/api/appointments/classroom/${cid}/teachers`, {
+                params: { from: toYMD(today) }
+            });
+            if (res.data && Array.isArray(res.data.availableDates)) {
+                setAvailableDates(res.data.availableDates);
+            }
+        } catch (e) {
+            alert('Failed to load available dates: ' + e.message);
+        } finally {
+            setModalLoading(false);
+        }
+    };
+
+    const fetchSlots = async (dateStr) => {
+        setSelectedRescheduleDate(dateStr);
+        setSelectedSlot(null);
+        setModalLoading(true);
+        try {
+            const cid = rescheduleApt.student?.classroomId || rescheduleApt.classroomId || rescheduleApt.ClassroomId;
+            const tid = rescheduleApt.teacher?.id || rescheduleApt.teacherId || rescheduleApt.TeacherId || 0;
+            const res = await api.get(`/api/appointments/slots/${dateStr}`, {
+                params: {
+                    classroomId: cid,
+                    teacherId: tid,
+                    onlyAvailable: true
+                }
+            });
+            if (res.data && res.data.slots) {
+                setAvailableSlots(res.data.slots);
+            }
+        } catch (e) {
+            alert('Failed to load slots.');
+        } finally {
+            setModalLoading(false);
+        }
+    };
+
+    const submitReschedule = async () => {
+        if (!selectedRescheduleDate || !selectedSlot) return;
+        try {
+            setModalLoading(true);
+            const id = rescheduleApt.id || rescheduleApt.Id;
+            await api.post(`/api/appointments/user/reservations/${id}/reschedule`, {
+                date: selectedRescheduleDate,
+                slotId: selectedSlot
+            });
+            setRescheduleApt(null);
+            loadAppointments();
+        } catch (e) {
+            alert('Failed to reschedule.');
+        } finally {
+            setModalLoading(false);
+        }
+    };
+
+    const selectedKey = selectedDay ? toYMD(selectedDay) : null;
+    const dayAppts = selectedKey ? (appointments[selectedKey] || []) : [];
+
+    return (
+        <div className="page-container calendar-page-container">
+            {/* Tab Switcher */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--border-color)' }}>
+                {[
+                    { key: 'calendar', label: 'Calendar', icon: 'calendar' },
+                    { key: 'manage', label: 'Manage Slots', icon: 'settings' },
+                ].map(tab => (
+                    <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '10px 20px', border: 'none', borderBottom: '3px solid',
+                            borderBottomColor: activeTab === tab.key ? 'var(--primary-color)' : 'transparent',
+                            background: 'transparent',
+                            color: activeTab === tab.key ? 'var(--primary-color)' : 'var(--text-secondary)',
+                            fontWeight: activeTab === tab.key ? 700 : 500,
+                            fontSize: 14, cursor: 'pointer', transition: 'all 0.15s',
+                            marginBottom: -2
+                        }}>
+                        <Icon name={tab.icon} size={15} />
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Calendar Tab */}
+            {activeTab === 'calendar' && (
+                <div>
+                    <div className="page-header calendar-toolbar" style={{ marginBottom: 24 }}>
+                        <div className="calendar-month-nav">
+                            <button className="btn-secondary" onClick={() => changeMonth(-1)}>
+                                <Icon name="chevron-left" size={16} />
+                            </button>
+                            <h2 style={{ fontSize: 18, margin: 0, minWidth: 180, textAlign: 'center' }}>
+                                {visibleMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                            </h2>
+                            <button className="btn-secondary" onClick={() => changeMonth(1)}>
+                                <Icon name="chevron-right" size={16} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="calendar-side-by-side">
+                        <div className="calendar-grid-panel card">
+                            <div className="card-body" style={{ padding: 0 }}>
+                                <div className="calendar-grid">
+                                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(dn => (
+                                        <div key={dn} className="calendar-header-cell">{dn}</div>
+                                    ))}
+                                    {days.map(dy => {
+                                        const key = toYMD(dy);
+                                        const isOtherMonth = dy.getMonth() !== visibleMonth.getMonth();
+                                        const isSelected = selectedKey === key;
+                                        const isToday = toYMD(new Date()) === key;
+                                        const hasConfirmed = (appointments[key] || []).some(a => (a.status || a.Status || '').toLowerCase() === 'booked');
+                                        const hasAny = (appointments[key] || []).length > 0;
+
+                                        return (
+                                            <div
+                                                key={dy.getTime()}
+                                                className={'calendar-cell' + (isOtherMonth ? ' other-month' : '') + (isToday ? ' today' : '') + (isSelected ? ' selected' : '')}
+                                                onClick={() => setSelectedDay(dy)}
+                                            >
+                                                <div className="calendar-day-number">{dy.getDate()}</div>
+                                                {hasAny && (
+                                                    <div className="calendar-event-dot" style={{ background: hasConfirmed ? '#50AC55' : '#ccc' }}>
+                                                        <span className="calendar-event-dot-title">{appointments[key].length} Appointment{appointments[key].length > 1 ? 's' : ''}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="calendar-events-panel card">
+                            <div className="card-body calendar-day-events">
+                                <div className="calendar-day-events-title">
+                                    {selectedDay ? ('Appointments for ' + formatDDMMYYYY(selectedDay)) : 'Select a date'}
+                                </div>
+
+                                {loading && <p>Loading...</p>}
+
+                                {!loading && selectedDay && dayAppts.length === 0 && (
+                                    <p className="empty-state-msg">No appointments on this date.</p>
+                                )}
+
+                                {!loading && !selectedDay && (
+                                    <p className="empty-state-msg">Select a date from the calendar to view its appointments.</p>
+                                )}
+
+                                {!loading && selectedDay && dayAppts.length > 0 && (
+                                    <div className="calendar-day-event-list">
+                                        {dayAppts.map((apt, idx) => {
+                                            const st = (apt.status || apt.Status || '').toLowerCase();
+                                            const isCancelled = st === 'cancelled' || st === 'canceled' || st.includes('canceled');
+                                            const isConfirmed = st === 'booked';
+
+                                            const sName = apt.student?.name || apt.studentName || apt.StudentName || '';
+                                            const cName = apt.student?.classroomName || apt.classroomName || apt.ClassroomName || '';
+                                            const tName = apt.teacher?.name || apt.teacherName || apt.TeacherName || '';
+                                            const slotStart = apt.start || apt.slotStart || apt.SlotStart || '';
+                                            const slotEnd = apt.end || apt.slotEnd || apt.SlotEnd || '';
+                                            const meetingLink = '';
+
+                                            return (
+                                                <div key={apt.id || apt.Id || idx} style={{ padding: 16, border: '1px solid #eee', borderRadius: 8, opacity: isCancelled ? 0.6 : 1, marginBottom: 12 }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                                        <div>
+                                                            <strong>{sName}</strong>
+                                                            {cName && <span style={{ color: '#666', marginLeft: 8 }}>({cName})</span>}
+                                                            {isUserAdmin() && <div style={{ fontSize: 12, color: '#888' }}>Teacher: {tName}</div>}
+                                                        </div>
+                                                        <div>
+                                                            <span className={'badge ' + (isConfirmed ? 'badge-success' : isCancelled ? 'badge-danger' : 'badge-warning')}>
+                                                                {apt.status || apt.Status}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ fontSize: 14, color: '#444', marginBottom: 12 }}>
+                                                        Time: {slotStart} - {slotEnd}
+                                                        {meetingLink && (
+                                                            <span style={{ marginLeft: 8 }}>
+                                                                &bull; <a href={meetingLink} target="_blank" rel="noreferrer">Join Meeting</a>
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div style={{ display: 'flex', gap: 8 }}>
+                                                        {!isConfirmed && !isCancelled && (
+                                                            <button className="btn btn-primary btn-sm" onClick={() => handleAction(apt.id || apt.Id, 'Booked')}>Confirm</button>
+                                                        )}
+                                                        {!isCancelled && (
+                                                            <button className="btn btn-sm" onClick={() => openReschedule(apt)}>Reschedule</button>
+                                                        )}
+                                                        {!isCancelled && (
+                                                            <button className="btn btn-danger btn-sm" onClick={() => handleAction(apt.id || apt.Id, 'Cancelled')}>Cancel</button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Manage Slots Tab */}
+            {activeTab === 'manage' && <AdminSlotsManager />}
+
+            {/* Reschedule Modal */}
+            {rescheduleApt && (
+                <div className="modal-overlay">
+                    <div className="modal-box" style={{ maxWidth: 500 }}>
+                        <h2>Reschedule Appointment</h2>
+                        <p style={{ color: '#666', marginBottom: 16 }}>
+                            Rescheduling for {rescheduleApt.student?.name || rescheduleApt.studentFirstName || rescheduleApt.StudentFirstName}
+                        </p>
+
+                        {modalLoading && <p>Loading...</p>}
+
+                        <div style={{ marginBottom: 16 }}>
+                            <label className="form-label">Available Dates</label>
+                            <select
+                                className="form-input"
+                                value={selectedRescheduleDate || ''}
+                                onChange={e => fetchSlots(e.target.value)}
+                            >
+                                <option value="">-- Select a date --</option>
+                                {availableDates.map(dd => (
+                                    <option key={dd} value={dd}>{formatDDMMYYYY(dd)}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {selectedRescheduleDate && (
+                            <div style={{ marginBottom: 24 }}>
+                                <label className="form-label">Available Slots</label>
+                                {availableSlots.length === 0 ? (
+                                    <p style={{ color: '#d32f2f' }}>No available slots on this date.</p>
+                                ) : (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                        {availableSlots.map(s => (
+                                            <div
+                                                key={s.id || s.Id}
+                                                onClick={() => setSelectedSlot(s.id || s.Id)}
+                                                style={{
+                                                    padding: '8px 12px',
+                                                    border: selectedSlot === (s.id || s.Id) ? '2px solid var(--primary-color)' : '1px solid #ccc',
+                                                    borderRadius: 6,
+                                                    cursor: 'pointer',
+                                                    background: selectedSlot === (s.id || s.Id) ? 'var(--primary-color)' : '#fff',
+                                                    color: selectedSlot === (s.id || s.Id) ? '#fff' : '#333'
+                                                }}
+                                            >
+                                                {s.start || s.Start}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                            <button className="btn" onClick={() => setRescheduleApt(null)}>Close</button>
+                            <button
+                                className="btn btn-primary"
+                                disabled={!selectedRescheduleDate || !selectedSlot || modalLoading}
+                                onClick={submitReschedule}
+                            >
+                                Save Reschedule
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 
 const App = () => {
     const [loggedIn, setLoggedIn] = useState(Auth.isLoggedIn());

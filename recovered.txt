@@ -1,0 +1,158 @@
+Created At: 2026-07-10T14:26:14Z
+Completed At: 2026-07-10T14:26:14Z
+File Path: `file:///C:/Users/karam/arabicschoolFrontend/teachers/lib/screens/appointments.dart`
+Total Lines: 1479
+Total Bytes: 67311
+Showing lines 1 to 150
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import 'package:flutter/material.dart';
+2: import 'package:feather_icons/feather_icons.dart';
+3: import 'package:dio/dio.dart';
+4: import 'package:flutter/services.dart';
+5: import 'package:cached_network_image/cached_network_image.dart';
+6: import '../shared/api_client.dart';
+7: 
+8: import '../shared/globals.dart';
+9: import '../shared/security_service.dart';
+10: import '../shared/image_cache_manager.dart';
+11: 
+12: class AppointmentsPage extends StatefulWidget {
+13:   const AppointmentsPage({
+14:     super.key,
+15:     this.date,
+16:     this.start,
+17:     this.end,
+18:   });
+19: 
+20:   /// Optional single-day filter. Sends `date=YYYY-MM-DD`.
+21:   final DateTime? date;
+22: 
+23:   /// Optional inclusive range filter. Sends `start=YYYY-MM-DD&end=YYYY-MM-DD`.
+24:   final DateTime? start;
+25:   final DateTime? end;
+26: 
+27:   @override
+28:   State<AppointmentsPage> createState() => _AppointmentsPageState();
+29: }
+30: 
+31: class _AppointmentsPageState extends State<AppointmentsPage> {
+32:   late DateTime _visibleMonth;
+33: 
+34:   static const SystemUiOverlayStyle _overlayStyle = SystemUiOverlayStyle(
+35:     statusBarColor: Colors.transparent,
+36:     statusBarIconBrightness: Brightness.dark,
+37:     statusBarBrightness: Brightness.light,
+38:   );
+39: 
+40:   bool _overlayApplyScheduled = false;
+41:   void _queueOverlayStyleUpdate() {
+42:     if (_overlayApplyScheduled) return;
+43:     _overlayApplyScheduled = true;
+44:     WidgetsBinding.instance.addPostFrameCallback((_) {
+45:       _overlayApplyScheduled = false;
+46:       if (!mounted) return;
+47:       final route = ModalRoute.of(context);
+48:       if (route != null && !route.isCurrent) return;
+49:       SystemChrome.setSystemUIOverlayStyle(_overlayStyle);
+50:     });
+51:   }
+52: 
+53:   bool _isLoading = false;
+54:   String? _error;
+55: 
+56:   final Map<String, List<_Appointment>> _appointmentsByDate = {};
+57:   DateTime? _selectedDay;
+58: 
+59:   @override
+60:   void initState() {
+61:     super.initState();
+62:     _queueOverlayStyleUpdate();
+63:     final initial = widget.date ?? widget.start ?? DateTime.now();
+64:     _visibleMonth = DateTime(initial.year, initial.month, 1);
+65:     _selectedDay = widget.date != null
+66:         ? DateTime(widget.date!.year, widget.date!.month, widget.date!.day)
+67:         : null;
+68:     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAppointments());
+69:   }
+70: 
+71:   @override
+72:   void didChangeDependencies() {
+73:     super.didChangeDependencies();
+74:     _queueOverlayStyleUpdate();
+75:   }
+76: 
+77:   void _goToPage(int page) {
+78:     setState(() {
+79:       _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + page, 1);
+80:     });
+81:     _loadAppointments();
+82:   }
+83: 
+84:   String _ymd(DateTime d) =>
+85:       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+86: 
+87:   void _snack(String msg, {Color? bg}) {
+88:     if (!mounted) return;
+89:     ScaffoldMessenger.of(context).showSnackBar(
+90:       SnackBar(content: Text(msg), backgroundColor: bg),
+91:     );
+92:   }
+93: 
+94:   bool _isCancelledStatus(String status) {
+95:     final s = status.trim().toLowerCase();
+96:     return s == 'cancelled' ||
+97:         s == 'canceled' ||
+98:         s == 'cancelled by parent' ||
+99:         s == 'canceled by parent';
+100:   }
+101: 
+102:   bool _isConfirmedStatus(String status) => status.trim().toLowerCase() == 'booked';
+103: 
+104:   _Appointment? _findAppointmentById(int id) {
+105:     for (final dayList in _appointmentsByDate.values) {
+106:       for (final a in dayList) {
+107:         if (a.id == id) return a;
+108:       }
+109:     }
+110:     return null;
+111:   }
+112: 
+113:   List<DateTime> _daysForMonth(DateTime month) {
+114:     final first = DateTime(month.year, month.month, 1);
+115:     final last = DateTime(month.year, month.month + 1, 0);
+116:     final leading = first.weekday % 7; // Sun=0..Sat=6
+117:     final total = leading + last.day;
+118:     final rows = (total / 7).ceil();
+119:     final count = rows * 7;
+120:     final days = <DateTime>[];
+121:     for (int i = 0; i < count; i++) {
+122:       final day = first.subtract(Duration(days: leading)).add(Duration(days: i));
+123:       days.add(day);
+124:     }
+125:     return days;
+126:   }
+127: 
+128:   String _monthName(int m) {
+129:     const names = [
+130:       'Jan',
+131:       'Feb',
+132:       'Mar',
+133:       'Apr',
+134:       'May',
+135:       'Jun',
+136:       'Jul',
+137:       'Aug',
+138:       'Sep',
+139:       'Oct',
+140:       'Nov',
+141:       'Dec',
+142:     ];
+143:     return names[(m - 1).clamp(0, 11)];
+144:   }
+145: 
+146:   Future<void> _loadAppointments() async {
+147:     if (_isLoading) return;
+148:     setState(() {
+149:       _isLoading = true;
+150:       _error = null;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
