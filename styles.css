@@ -274,6 +274,7 @@ body.login-page #root {
 .btn-danger,
 .btn-checkin,
 .btn-ms,
+.btn-ghost,
 .btn-reload {
     display: inline-flex;
     align-items: center;
@@ -281,6 +282,20 @@ body.login-page #root {
     gap: 0.5rem;
     line-height: 1;
     white-space: nowrap;
+}
+
+.btn-ghost {
+    background: transparent;
+    color: inherit;
+    border: 1px solid transparent;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-ghost:hover {
+    background: rgba(0, 0, 0, 0.05);
 }
 
 .btn-ms {

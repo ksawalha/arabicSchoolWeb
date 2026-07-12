@@ -1108,6 +1108,13 @@ const Sidebar = ({ currentRoute, onNavigate, notifCount, sidebarOpen, onClose, c
                             <span>Settings</span>
                         </div>
                     )}
+                    {canSeeSettings && (
+                        <div className={`sidebar-item ${currentRoute === '/templates' ? 'active' : ''}`}
+                            onClick={() => { onNavigate('/templates'); onClose(); }}>
+                            <Icon name="file-text" size={20} />
+                            <span>Templates</span>
+                        </div>
+                    )}
                     <div className={`sidebar-item ${currentRoute === '/profile' ? 'active' : ''}`}
                         onClick={() => { onNavigate('/profile'); onClose(); }}>
                         <Icon name="user" size={20} />
@@ -11645,6 +11652,7 @@ const SurveysPage = () => {
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
     const [viewId, setViewId] = useState(null);
+    const [search, setSearch] = useState('');
 
     const loadData = () => {
         setLoading(true);
@@ -11684,26 +11692,32 @@ const SurveysPage = () => {
         return <SurveyFormScreen onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); loadData(); }} />;
     }
 
+    const filteredSurveys = surveys.filter(s => {
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return (s.title || '').toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q);
+    });
+
     return (
         <div className="page-container">
-            <div className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                    <h1 className="page-title">Surveys</h1>
-                    <p className="page-subtitle">View active and past surveys sent to parents</p>
+            <div className="page-header" style={{ marginBottom: 24, display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="toolbar-search" style={{ flex: 1, minWidth: 200, maxWidth: 400 }}>
+                    <span className="search-icon"><Icon name="search" size={16} /></span>
+                    <input type="text" placeholder="Search surveys…" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+                <button className="btn btn-primary" style={{ whiteSpace: 'nowrap' }} onClick={() => setShowCreate(true)}>
                     <Icon name="plus" size={16} /> Create Survey
                 </button>
             </div>
 
             <div className="card" style={{ padding: 24 }}>
                 {loading ? <ListRowsSkeleton count={6} /> : (
-                    surveys.length === 0 ? (
+                    filteredSurveys.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--color-text-muted)' }}>
                             <Icon name="clipboard" size={48} style={{ marginBottom: 16, opacity: 0.5 }} />
-                            <h3>No surveys found</h3>
-                            <p>You haven't created any surveys yet.</p>
-                            <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowCreate(true)}>Create Survey</button>
+                            <h3>{search.trim() ? "No surveys match your search" : "No surveys found"}</h3>
+                            <p>{search.trim() ? "Try a different search term." : "You haven't created any surveys yet."}</p>
+                            {!search.trim() && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowCreate(true)}>Create Survey</button>}
                         </div>
                     ) : (
                         <table className="data-table data-table-hover">
@@ -11717,7 +11731,7 @@ const SurveysPage = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {surveys.map(survey => {
+                                {filteredSurveys.map(survey => {
                                     const createdDate = survey.created ? new Date(survey.created).toLocaleDateString() : 'N/A';
                                     const status = (survey.status || 'UNKNOWN').toUpperCase();
                                     return (
@@ -13342,6 +13356,498 @@ const StoriesPage = () => {
 };
 
 // ═══════════════════════════════════════════
+//  TEMPLATES PAGE
+// ═══════════════════════════════════════════
+
+const TEMPLATE_PLACEHOLDERS = [
+    { id: '#FullName', label: 'FullName', description: 'Student full name' },
+    { id: '#FirstName', label: 'FirstName', description: 'Student first name' },
+    { id: '#Code', label: 'Code', description: 'Student code' },
+    { id: '#SecondParentName', label: 'SecondParentName', description: 'Second parent name' },
+    { id: '#Classroom', label: 'Classroom', description: 'Classroom name' },
+    { id: '#ReckonBalance', label: 'ReckonBalance', description: 'Reckon balance' },
+    { id: '#LastInvoiceDueDate', label: 'LastInvoiceDueDate', description: 'Last invoice due date' },
+    { id: '#LastInvoiceBalance', label: 'LastInvoiceBalance', description: 'Last invoice balance' },
+    { id: '#Program', label: 'Program', description: 'Student program' },
+    { id: '#EOIProgram', label: 'EOIProgram', description: 'EOI program' },
+    { id: '#EOINumber', label: 'EOINumber', description: 'EOI number' },
+    { id: '#EOIDate', label: 'EOIDate', description: 'EOI date' },
+    { id: '#CurrentDate', label: 'CurrentDate', description: 'Current date (dd/MM/yyyy)' },
+    { id: '#CurrentDay', label: 'CurrentDay', description: 'Current day of week' },
+    { id: '#year', label: 'year', description: 'Current year' },
+    { id: '#studentname', label: 'studentname', description: 'Student name (legacy)' },
+    { id: '#parentname', label: 'parentname', description: 'Parent name (legacy)' },
+    { id: '#parentfirst', label: 'parentfirst', description: 'Parent first name (legacy)' },
+    { id: '#parentnames', label: 'parentnames', description: 'Parent names combined' },
+    { id: '#firstname', label: 'firstname', description: 'First name (legacy)' },
+    { id: '#lastname', label: 'lastname', description: 'Last name (legacy)' },
+    { id: '#date', label: 'date', description: 'Date placeholder' },
+    { id: '#time', label: 'time', description: 'Time placeholder' },
+    { id: '#userfirstname', label: 'userfirstname', description: 'Sender first name' },
+];
+
+const compressImage = (file) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 800;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
+            };
+            img.onerror = () => reject(new Error('Failed to load image'));
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+    });
+};
+
+const GrapesJsEditor = ({ value, customVariables = [], getEditorHtmlRef, height = '600px' }) => {
+    const containerRef = useRef(null);
+    const editorInstance = useRef(null);
+    const initialized = useRef(false);
+
+    useEffect(() => {
+        if (!window.grapesjs || initialized.current) return;
+        initialized.current = true;
+
+        const editor = grapesjs.init({
+            container: containerRef.current,
+            height: typeof height === 'number' ? `${height}px` : height,
+            width: '100%',
+            fromElement: false,
+            storageManager: false,
+            plugins: ['gjs-preset-newsletter'],
+            pluginsOpts: {
+                'gjs-preset-newsletter': {
+                    modalTitleImport: 'Import template',
+                }
+            },
+            assetManager: {
+                upload: true,
+                uploadName: 'files',
+                uploadFile: async (e) => {
+                    const files = e.dataTransfer ? e.dataTransfer.files : e.target.files;
+                    for (const file of files) {
+                        if (file.type.startsWith('image/')) {
+                            try {
+                                const base64 = await compressImage(file);
+                                editor.AssetManager.add({ src: base64, type: 'image' });
+                            } catch (err) {
+                                console.error('Failed to compress image:', err);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        editorInstance.current = editor;
+
+        if (value) {
+            editor.setComponents(value);
+        }
+
+        if (getEditorHtmlRef) {
+            getEditorHtmlRef.current = () => {
+                if (editor) {
+                    // Extract HTML with inline CSS for email compatibility
+                    return editor.runCommand('gjs-get-inlined-html');
+                }
+                return value || '';
+            };
+        }
+
+        return () => {
+            if (editorInstance.current) {
+                editorInstance.current.destroy();
+                editorInstance.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        const editor = editorInstance.current;
+        if (!editor) return;
+
+        // Remove existing variables category blocks
+        const blocks = editor.BlockManager.getAll();
+        const varsBlocks = blocks.filter(b => b.get('category').id === 'Variables' || b.get('category').label === 'Variables');
+        varsBlocks.forEach(b => editor.BlockManager.remove(b.get('id')));
+
+        // Add standard placeholders
+        TEMPLATE_PLACEHOLDERS.forEach(p => {
+            editor.BlockManager.add(`var-${p.id}`, {
+                label: `Var: ${p.label}`,
+                content: p.id,
+                category: 'Variables',
+                attributes: { class: 'gjs-block gjs-one-bg gjs-four-color-h' }
+            });
+        });
+
+        // Add custom variables
+        customVariables.forEach(v => {
+            editor.BlockManager.add(`var-custom-${v}`, {
+                label: `Custom: ${v}`,
+                content: `[${v}]`,
+                category: 'Variables',
+                attributes: { class: 'gjs-block gjs-one-bg gjs-four-color-h' }
+            });
+        });
+    }, [customVariables]);
+
+    return (
+        <div style={{ border: '1px solid var(--color-border)', borderRadius: '8px', overflow: 'hidden' }}>
+            <div ref={containerRef}></div>
+        </div>
+    );
+};
+
+const TemplateEditorPage = ({ templateId, onBack }) => {
+    const isNew = !templateId;
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [name, setName] = useState('');
+    const [title, setTitle] = useState('');
+    const [content, setContent] = useState('');
+    const [isSystem, setIsSystem] = useState(false);
+    const [originalData, setOriginalData] = useState(null);
+
+    // Custom variables
+    const [customVariables, setCustomVariables] = useState([]);
+    const [newVarName, setNewVarName] = useState('');
+
+    const getEditorHtmlRef = useRef(null);
+
+    useEffect(() => {
+        if (isNew) {
+            api.get('/api/templates', { params: { filter: 'type==master', col: 'content', limit: 1 } })
+                .then(res => {
+                    const list = res.data?.data || res.data || [];
+                    if (list.length > 0 && list[0].content) {
+                        setContent(list[0].content);
+                    }
+                })
+                .catch(() => { })
+                .finally(() => setLoading(false));
+            return;
+        }
+
+        api.get(`/api/templates/${templateId}`, { params: { col: 'id,name,title,content,type,issystem,customvar' } })
+            .then(res => {
+                const d = res.data?.data || res.data || {};
+                setName(d.name || '');
+                setTitle(d.title || '');
+                setContent(d.content || '');
+                setIsSystem(!!d.issystem);
+                setOriginalData(d);
+                try {
+                    if (d.customvar) {
+                        const parsed = JSON.parse(d.customvar);
+                        if (Array.isArray(parsed)) setCustomVariables(parsed);
+                    }
+                } catch (e) { }
+            })
+            .catch(err => {
+                alert('Failed to load template: ' + (err.response?.data?.message || err.message));
+                onBack?.();
+            })
+            .finally(() => setLoading(false));
+    }, [templateId, isNew]);
+
+    const addCustomVariable = () => {
+        const v = newVarName.trim().replace(/[^a-zA-Z0-9_]/g, '');
+        if (!v) return;
+        if (TEMPLATE_PLACEHOLDERS.some(p => p.id.toLowerCase() === `#${v.toLowerCase()}` || p.id.toLowerCase() === v.toLowerCase())) {
+            alert('Cannot use a reserved placeholder name.');
+            return;
+        }
+        if (customVariables.includes(v)) {
+            alert('Variable already exists.');
+            return;
+        }
+        setCustomVariables([...customVariables, v]);
+        setNewVarName('');
+    };
+
+    const removeCustomVariable = (v) => {
+        setCustomVariables(customVariables.filter(x => x !== v));
+    };
+
+    const handleSave = async () => {
+        if (!name.trim()) { alert('Name is required'); return; }
+
+        let finalContent = content;
+        if (getEditorHtmlRef.current) {
+            finalContent = getEditorHtmlRef.current();
+        }
+
+        setSaving(true);
+        try {
+            const payload = {
+                name: name.trim(),
+                title: title.trim(),
+                content: finalContent,
+                type: 'email',
+                customvar: JSON.stringify(customVariables)
+            };
+            if (isNew) {
+                await api.post('/api/templates', payload);
+            } else {
+                await api.patch(`/api/templates/${templateId}`, payload);
+            }
+            onBack?.();
+        } catch (err) {
+            alert('Failed to save template: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="page-container">
+                <ListRowsSkeleton count={8} />
+            </div>
+        );
+    }
+
+    return (
+        <div className="page-container">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                <button className="btn btn-ghost" onClick={onBack} style={{ gap: 4 }}>
+                    <Icon name="arrow-left" size={16} /> Back
+                </button>
+                <h2 style={{ margin: 0, flex: 1, fontSize: '1.25rem', fontWeight: 600 }}>
+                    {isNew ? 'Create Template' : `Edit: ${originalData?.name || name}`}
+                </h2>
+                {isSystem && (
+                    <span className="badge badge-secondary" style={{ fontSize: '0.75rem' }}>System Template</span>
+                )}
+                <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ gap: 4 }}>
+                    <Icon name="save" size={16} /> {saving ? 'Saving…' : 'Save'}
+                </button>
+            </div>
+
+            <div className="card" style={{ padding: 24 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+                    <div>
+                        <label className="form-label">Name <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                        <input className="form-input" type="text" placeholder="e.g. Welcome Email" value={name} onChange={e => setName(e.target.value)} />
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                            Internal lookup name used by the system
+                        </div>
+                    </div>
+                    <div>
+                        <label className="form-label">Email Subject / Title</label>
+                        <input className="form-input" type="text" placeholder="e.g. Welcome to Arabic School" value={title} onChange={e => setTitle(e.target.value)} />
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                            Used as the email subject line
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+                <h3 style={{ marginTop: 0, fontSize: '1rem', marginBottom: 16 }}>Custom Variables</h3>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {customVariables.map(v => (
+                        <div key={v} className="badge badge-primary" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px' }}>
+                            <span>[{v}]</span>
+                            <Icon name="x" size={14} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => removeCustomVariable(v)} />
+                        </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: customVariables.length > 0 ? 8 : 0 }}>
+                        <input
+                            className="form-input"
+                            type="text"
+                            placeholder="New variable name..."
+                            value={newVarName}
+                            onChange={e => setNewVarName(e.target.value)}
+                            style={{ width: 180, padding: '4px 8px' }}
+                            onKeyDown={e => e.key === 'Enter' && addCustomVariable()}
+                        />
+                        <button className="btn btn-secondary" style={{ padding: '4px 8px' }} onClick={addCustomVariable}>Add</button>
+                    </div>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 8 }}>
+                    These variables will be available as draggable blocks in the editor's "Variables" category.
+                </div>
+            </div>
+
+            <div className="card" style={{ padding: 0, border: 'none', background: 'transparent' }}>
+                <label className="form-label" style={{ marginBottom: 8, paddingLeft: 4 }}>
+                    Email Content Designer
+                </label>
+                <GrapesJsEditor
+                    value={content}
+                    customVariables={customVariables}
+                    getEditorHtmlRef={getEditorHtmlRef}
+                    height="70vh"
+                />
+            </div>
+        </div>
+    );
+};
+
+const TemplatesPage = () => {
+    const [templates, setTemplates] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+    const [typeFilter, setTypeFilter] = useState('email');
+    const [editId, setEditId] = useState(null);
+    const [createMode, setCreateMode] = useState(false);
+    const [deleting, setDeleting] = useState(null);
+
+    const loadTemplates = () => {
+        setLoading(true);
+        api.get('/api/templates', { params: { filter: `type==${typeFilter}`, col: 'id,name,type,issystem,lastedited', limit: 50 } })
+            .then(res => setTemplates(res.data?.data || res.data || []))
+            .catch(() => alert('Failed to load templates'))
+            .finally(() => setLoading(false));
+    };
+
+    useEffect(() => { loadTemplates(); }, [typeFilter]);
+
+    const handleDelete = async (id, e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this template? This cannot be undone.')) return;
+        setDeleting(id);
+        try {
+            await api.delete(`/api/templates/${id}`);
+            setTemplates(prev => prev.filter(t => t.id !== id));
+        } catch (err) {
+            alert('Failed to delete: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setDeleting(null);
+        }
+    };
+
+    if (editId) {
+        return <TemplateEditorPage templateId={editId} onBack={() => { setEditId(null); loadTemplates(); }} />;
+    }
+
+    if (createMode) {
+        return <TemplateEditorPage templateId={null} onBack={() => { setCreateMode(false); loadTemplates(); }} />;
+    }
+
+    const filtered = templates.filter(t => {
+        if (t.issystem) return false;
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return (t.name || '').toLowerCase().includes(q);
+    });
+
+    return (
+        <div className="page-container">
+            <div className="page-header" style={{ marginBottom: 24, display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="toolbar-search" style={{ flex: 1, minWidth: 200, maxWidth: 400 }}>
+                    <span className="search-icon"><Icon name="search" size={16} /></span>
+                    <input type="text" placeholder="Search templates…" value={search} onChange={e => setSearch(e.target.value)} />
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {['email', 'certificate'].map(t => (
+                        <button
+                            key={t}
+                            className={`btn ${typeFilter === t ? 'btn-primary' : 'btn-ghost'}`}
+                            style={{ textTransform: 'capitalize', fontSize: '0.85rem' }}
+                            onClick={() => setTypeFilter(t)}
+                        >
+                            <Icon name={t === 'email' ? 'mail' : 'award'} size={14} />
+                            {t}
+                        </button>
+                    ))}
+                    <button className="btn btn-primary" onClick={() => setCreateMode(true)} style={{ whiteSpace: 'nowrap' }}>
+                        <Icon name="plus" size={16} /> New Template
+                    </button>
+                </div>
+            </div>
+
+            <div className="card" style={{ padding: 24 }}>
+                {loading ? <ListRowsSkeleton count={6} /> : (
+                    filtered.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--color-text-muted)' }}>
+                            <Icon name="file-text" size={48} style={{ marginBottom: 16, opacity: 0.5 }} />
+                            <h3>{search.trim() ? 'No templates match your search' : 'No templates found'}</h3>
+                            <p>{search.trim() ? 'Try a different search term.' : `No ${typeFilter} templates yet.`}</p>
+                            {!search.trim() && (
+                                <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setCreateMode(true)}>
+                                    Create Template
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <table className="data-table data-table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>System</th>
+                                    <th>Last Edited</th>
+                                    <th style={{ width: 80, textAlign: 'center' }}>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map(t => {
+                                    const edited = t.lastedited ? new Date(t.lastedited).toLocaleDateString() : '—';
+                                    return (
+                                        <tr key={t.id} onClick={() => setEditId(t.id)} style={{ cursor: 'pointer' }}>
+                                            <td>
+                                                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <Icon name={t.type === 'email' ? 'mail' : 'award'} size={16} style={{ opacity: 0.5 }} />
+                                                    {t.name || 'Untitled'}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span className="badge badge-secondary" style={{ textTransform: 'capitalize' }}>{t.type || 'email'}</span>
+                                            </td>
+                                            <td>
+                                                {t.issystem ? (
+                                                    <span className="badge badge-warning" style={{ fontSize: '0.72rem' }}>System</span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Custom</span>
+                                                )}
+                                            </td>
+                                            <td style={{ color: 'var(--color-text-muted)' }}>{edited}</td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                {!t.issystem && (
+                                                    <button
+                                                        className="btn btn-ghost"
+                                                        style={{ padding: '4px 8px', color: 'var(--color-danger)' }}
+                                                        disabled={deleting === t.id}
+                                                        onClick={(e) => handleDelete(t.id, e)}
+                                                        title="Delete template"
+                                                    >
+                                                        <Icon name="trash-2" size={16} />
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    )
+                )}
+            </div>
+        </div>
+    );
+};
+
+// ═══════════════════════════════════════════
 //  DASHBOARD LAYOUT
 // ═══════════════════════════════════════════
 
@@ -13361,6 +13867,7 @@ const pageTitles = {
     '/send-reminders': 'Invoice Reminders',
     '/profile': 'My Profile',
     '/settings': 'Settings',
+    '/templates': 'Templates',
 };
 
 const DashboardLayout = ({ onLogout }) => {
@@ -13472,6 +13979,7 @@ const DashboardLayout = ({ onLogout }) => {
         case '/send-reminders': PageComponent = isUserAdmin() ? <SendRemindersPage /> : <HomePage />; break;
         case '/profile': PageComponent = <ProfilePage onLogout={onLogout} />; break;
         case '/settings': PageComponent = <SettingsPage />; break;
+        case '/templates': PageComponent = isUserAdmin() ? <TemplatesPage /> : <HomePage />; break;
         default: PageComponent = <HomePage />;
     }
 
@@ -16490,7 +16998,7 @@ const AdminSlotsManager = () => {
                             <div className="modal-box" style={{ maxWidth: 650, width: '90%', padding: 0 }} onClick={e => e.stopPropagation()}>
                                 <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        Generate Recurring Slots
+                                        Open appointment slots
                                     </h3>
                                 </div>
 
@@ -16628,7 +17136,7 @@ const AdminSlotsManager = () => {
                                         onClick={handleGenerate}
                                         style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: (genLoading || genPreview.length === 0 || (genClassrooms.length === 0 && genUsers.length === 0)) ? 0.5 : 1 }}>
                                         <Icon name={genLoading ? 'loader' : ''} size={14} />
-                                        {genLoading ? 'Generating...' : ('Generate ' + (genPreview.length > 0 ? genPreview.length + ' ' : '') + 'Slot' + (genPreview.length !== 1 ? 's' : ''))}
+                                        {genLoading ? 'Creating...' : ('Open ' + (genPreview.length > 0 ? genPreview.length + ' ' : '') + 'Slot' + (genPreview.length !== 1 ? 's' : ''))}
                                     </button>
                                 </div>
                             </div>
