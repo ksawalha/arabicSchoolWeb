@@ -1685,7 +1685,7 @@ const StudentEditModal = ({ student, onClose, onSaved }) => {
                             <div>
                                 <label style={{ display: 'block', marginBottom: 6, fontSize: '0.85rem', fontWeight: 600 }}>Classroom (Optional)</label>
                                 <select name="ClassroomId" value={formData.ClassroomId} onChange={handleChange} className="form-input">
-                                    <option value="">-- None --</option>
+                                    <option value="">-</option>
                                     {classrooms.map(c => <option key={c.id || c.Id} value={c.id || c.Id}>{c.name || c.Name}</option>)}
                                 </select>
                             </div>
@@ -13355,6 +13355,10 @@ const pageTitles = {
     '/calendar': 'Calendar',
     '/surveys': 'Surveys',
     '/payments': 'Payments Log',
+    '/mass-invoices': 'Issue Invoices',
+    '/email-campaigns': 'Email Campaigns',
+    '/appointments': 'Appointments',
+    '/send-reminders': 'Invoice Reminders',
     '/profile': 'My Profile',
     '/settings': 'Settings',
 };
@@ -16185,8 +16189,8 @@ const AdminSlotsManager = () => {
     };
 
     const selectAllAvailable = () => {
-        const available = slots.filter(s => s.status === 'available').map(s => s.id);
-        setChecked(new Set(available));
+        const deletable = slots.filter(s => !s.reservations || s.reservations.length === 0).map(s => s.id);
+        setChecked(new Set(deletable));
     };
 
     const toggleCheck = (id) => {
@@ -16348,10 +16352,10 @@ const AdminSlotsManager = () => {
             {slots.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: 'var(--sidebar-bg)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
                     <input type="checkbox" id="chk-all-slots"
-                        checked={checked.size > 0 && checked.size === slots.filter(s => s.status === 'available').length}
+                        checked={checked.size > 0 && checked.size === slots.filter(s => !s.reservations || s.reservations.length === 0).length}
                         onChange={e => e.target.checked ? selectAllAvailable() : setChecked(new Set())} />
                     <label htmlFor="chk-all-slots" style={{ fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
-                        Select all available ({slots.filter(s => s.status === 'available').length})
+                        Select all deletable ({slots.filter(s => !s.reservations || s.reservations.length === 0).length})
                     </label>
                     {checked.size > 0 && (
                         <button className="btn btn-danger btn-sm" onClick={bulkDelete} style={{ marginLeft: 8 }}>
@@ -16360,7 +16364,7 @@ const AdminSlotsManager = () => {
                         </button>
                     )}
                     <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>
-                        {slots.length} slot(s) found &bull; {slots.filter(s => s.status === 'reserved').length} reserved &bull; {slots.filter(s => s.status === 'available').length} available
+                        {slots.length} slot(s) found &bull; {slots.filter(s => s.reservations && s.reservations.length > 0).length} with history &bull; {slots.filter(s => !s.reservations || s.reservations.length === 0).length} deletable
                     </span>
                 </div>
             )}
@@ -16459,14 +16463,14 @@ const AdminSlotsManager = () => {
                                                             </div>
                                                         ))}
                                                     </div>
-                                                ) : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11 }}>None</span>}
+                                                ) : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11 }}>-</span>}
                                             </td>
                                             <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                                                 <button className="btn btn-danger btn-sm"
-                                                    disabled={isReserved}
+                                                    disabled={slot.reservations && slot.reservations.length > 0}
                                                     onClick={() => deleteSlot(slot.id)}
-                                                    title={isReserved ? 'Cannot delete - has active reservation' : 'Delete slot'}
-                                                    style={{ opacity: isReserved ? 0.35 : 1, padding: '4px 10px' }}>
+                                                    title={slot.reservations && slot.reservations.length > 0 ? 'Cannot delete - has reservation history' : 'Delete slot'}
+                                                    style={{ opacity: slot.reservations && slot.reservations.length > 0 ? 0.35 : 1, padding: '4px 10px' }}>
                                                     <Icon name="trash-2" size={13} />
                                                 </button>
                                             </td>
@@ -16637,110 +16641,6 @@ const AdminSlotsManager = () => {
 };
 // ─── END ADMIN SLOT MANAGER ───────────────────────────────────────────────────
 
-const AdminEditSlotModal = ({ slot, onClose, onSaved }) => {
-    const [date, setDate] = useState(slot.date);
-    const [start, setStart] = useState(slot.start);
-    const [end, setEnd] = useState(slot.end);
-    const [classrooms, setClassrooms] = useState(slot.classrooms?.map(c => c.id) || []);
-    const [users, setUsers] = useState(slot.users?.map(u => u.id) || []);
-
-    const [allClassrooms, setAllClassrooms] = useState([]);
-    const [allUsers, setAllUsers] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-
-    useEffect(() => {
-        api.get('/api/classrooms', { params: { col: 'id,name', filters: "status eq 'Current'", limit: 200 } })
-            .then(r => setAllClassrooms(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : [])))
-            .catch(() => { });
-        api.get('/api/users', { params: { col: 'id,name', role: 'Teacher', status: 'Current', limit: 300 } })
-            .then(r => setAllUsers(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : [])))
-            .catch(() => { });
-    }, []);
-
-    const handleSave = async () => {
-        if (!date || !start || !end) {
-            setError('Date, Start, and End times are required.');
-            return;
-        }
-        setLoading(true);
-        setError('');
-        try {
-            await api.put(`/api/appointments/admin/slots/${slot.slotId}`, {
-                date,
-                start,
-                end,
-                classroomIds: classrooms,
-                userIds: users
-            });
-            onSaved();
-        } catch (e) {
-            setError(e.response?.data?.message || 'Failed to update slot.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <GlobalCanvasPortal>
-            <div className="modal-overlay" onClick={onClose}>
-                <div className="modal-box" style={{ maxWidth: 500, width: '90%', padding: 0 }} onClick={e => e.stopPropagation()}>
-                    <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Edit Slot</h3>
-                    </div>
-                    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-                        {error && (
-                            <div style={{ padding: '10px 16px', background: '#FEE2E2', color: '#DC2626', borderRadius: 8, fontSize: 13, fontWeight: 500 }}>
-                                {error}
-                            </div>
-                        )}
-                        <div>
-                            <label className="form-label">Date</label>
-                            <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} />
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                            <div>
-                                <label className="form-label">Start Time</label>
-                                <input type="time" className="form-input" value={start} onChange={e => setStart(e.target.value)} />
-                            </div>
-                            <div>
-                                <label className="form-label">End Time</label>
-                                <input type="time" className="form-input" value={end} onChange={e => setEnd(e.target.value)} />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="form-label">Classrooms</label>
-                            <MultiSelectDropdown
-                                options={allClassrooms.map(c => ({ value: c.Id || c.id, label: c.name || c.Name }))}
-                                selected={classrooms}
-                                onChange={setClassrooms}
-                                placeholder="Select Classroom(s)"
-                                disabled={users.length > 0}
-                            />
-                        </div>
-                        <div>
-                            <label className="form-label">Teachers</label>
-                            <MultiSelectDropdown
-                                options={allUsers.map(u => ({ value: u.id || u.Id, label: u.name || u.Name }))}
-                                selected={users}
-                                onChange={setUsers}
-                                placeholder="Select Teacher(s)"
-                                disabled={classrooms.length > 0}
-                            />
-                        </div>
-                    </div>
-                    <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 10, background: 'var(--sidebar-bg)' }}>
-                        <button className="btn-secondary" onClick={onClose} disabled={loading}>Cancel</button>
-                        <button className="btn btn-primary" onClick={handleSave} disabled={loading} style={{ minWidth: 80 }}>
-                            {loading ? 'Saving...' : 'Save Changes'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </GlobalCanvasPortal>
-    );
-};
-
 const AppointmentsPage = () => {
     const [activeTab, setActiveTab] = useState('calendar');
 
@@ -16760,8 +16660,6 @@ const AppointmentsPage = () => {
     const [selectedSlot, setSelectedSlot] = useState(null);
     const [modalLoading, setModalLoading] = useState(false);
 
-    const [showEditSlotModal, setShowEditSlotModal] = useState(false);
-    const [editSlotData, setEditSlotData] = useState(null);
 
     const handleDeleteSlot = async (id) => {
         if (!window.confirm('Are you sure you want to delete this open slot?')) return;
@@ -17095,8 +16993,8 @@ const AppointmentsPage = () => {
                                                     <h4 style={{ fontSize: 14, fontWeight: 600, color: '#4b5563', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 6 }}>Available Open Slots</h4>
                                                     {openSlots.map(slot => {
                                                         const slotRestrs = [];
-                                                        if (slot.classrooms?.length) slotRestrs.push(`Classrooms: ${slot.classrooms.map(c => c.name).join(', ')}`);
-                                                        if (slot.users?.length) slotRestrs.push(`Teachers: ${slot.users.map(u => u.name).join(', ')}`);
+                                                        if (slot.classrooms?.length) slotRestrs.push(`Classroom: ${slot.classrooms.map(c => c.name).join(', ')}`);
+                                                        if (slot.users?.length) slotRestrs.push(`Teacher: ${slot.users.map(u => u.name).join(', ')}`);
                                                         const restrStr = slotRestrs.length ? slotRestrs.join(' | ') : 'All Classrooms & Teachers';
 
                                                         return (
@@ -17111,13 +17009,7 @@ const AppointmentsPage = () => {
                                                                         </div>
                                                                     </div>
                                                                     <div style={{ display: 'flex', gap: 8 }}>
-                                                                        <button className="btn-secondary" style={{ padding: '4px 8px' }} onClick={() => {
-                                                                            // TODO: Open slot edit modal
-                                                                            setEditSlotData(slot);
-                                                                            setShowEditSlotModal(true);
-                                                                        }}>
-                                                                            <Icon name="edit-2" size={14} />
-                                                                        </button>
+
                                                                         <button className="btn btn-danger" style={{ padding: '4px 8px' }} onClick={() => handleDeleteSlot(slot.slotId)}>
                                                                             <Icon name="trash-2" size={14} />
                                                                         </button>
@@ -17207,20 +17099,7 @@ const AppointmentsPage = () => {
                 </div>
             )}
 
-            {showEditSlotModal && editSlotData && (
-                <AdminEditSlotModal
-                    slot={editSlotData}
-                    onClose={() => {
-                        setShowEditSlotModal(false);
-                        setEditSlotData(null);
-                    }}
-                    onSaved={() => {
-                        setShowEditSlotModal(false);
-                        setEditSlotData(null);
-                        loadAppointments();
-                    }}
-                />
-            )}
+
         </div>
     );
 };
