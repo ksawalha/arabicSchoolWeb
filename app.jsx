@@ -622,6 +622,16 @@ const Login = ({ onLoginSuccess }) => {
     const pollIntervalRef = useRef(null);
     const countdownRef = useRef(null);
 
+    // OTP state
+    const [showOtpFlow, setShowOtpFlow] = useState(false);
+    const [otpStep, setOtpStep] = useState('email'); // 'email' or 'otp'
+    const [email, setEmail] = useState('');
+    const [otp, setOtp] = useState(['', '', '', '', '', '']);
+    const [otpError, setOtpError] = useState('');
+    const [otpLoading, setOtpLoading] = useState(false);
+    const [resendSeconds, setResendSeconds] = useState(0);
+    const otpRefs = useRef([]);
+
     useEffect(() => { statusRef.current = status; }, [status]);
 
     const clearAllTimers = () => {
@@ -630,6 +640,14 @@ const Login = ({ onLoginSuccess }) => {
     };
 
     useEffect(() => { createSession(); return clearAllTimers; }, []);
+
+    // Timer logic for OTP resend
+    useEffect(() => {
+        if (resendSeconds > 0) {
+            const timer = setTimeout(() => setResendSeconds(resendSeconds - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [resendSeconds]);
 
     const createSession = async () => {
         clearAllTimers();
@@ -704,6 +722,85 @@ const Login = ({ onLoginSuccess }) => {
         }
     };
 
+    const handleRequestOtp = async (e) => {
+        if (e) e.preventDefault();
+        if (!email.trim() || !email.includes('@')) { setOtpError('Enter a valid email'); return; }
+        setOtpLoading(true);
+        setOtpError('');
+        try {
+            const res = await axios.post(`${API_BASE}/api/request-otp/user`, { schoolemail: email.trim().toLowerCase() });
+            if (res.data?.success) {
+                setOtpStep('otp');
+                setResendSeconds(30);
+                setOtp(['', '', '', '', '', '']);
+                setTimeout(() => otpRefs.current[0]?.focus(), 100);
+            } else {
+                setOtpError(res.data?.message || 'Failed to send OTP');
+            }
+        } catch (err) {
+            setOtpError(err.response?.data?.message || 'Network error');
+        } finally {
+            setOtpLoading(false);
+        }
+    };
+
+    const handleVerifyOtp = async (otpString) => {
+        setOtpLoading(true);
+        setOtpError('');
+        try {
+            const res = await axios.post(`${API_BASE}/api/validate-otp/user`, {
+                schoolemail: email.trim().toLowerCase(),
+                otp: otpString,
+                device_id: 'web',
+                deviceOS: 'web'
+            });
+            if (res.data?.accessToken) {
+                clearAllTimers();
+                Auth.setToken(res.data.accessToken);
+                setUser(res.data);
+                setStatus('success');
+            } else {
+                setOtpError(res.data?.message || 'Failed to verify OTP');
+            }
+        } catch (err) {
+            setOtpError(err.response?.data?.message || 'Failed to verify OTP');
+        } finally {
+            setOtpLoading(false);
+        }
+    };
+
+    const handleOtpChange = (e, index) => {
+        const val = e.target.value.replace(/[^0-9]/g, '');
+        if (val.length > 1) { // Paste handling
+            const chars = val.split('').slice(0, 6);
+            const newOtp = [...otp];
+            chars.forEach((c, i) => { if (i < 6) newOtp[i] = c; });
+            setOtp(newOtp);
+            const nextFocus = Math.min(chars.length, 5);
+            otpRefs.current[nextFocus]?.focus();
+            if (chars.length === 6) handleVerifyOtp(newOtp.join(''));
+            return;
+        }
+
+        const newOtp = [...otp];
+        newOtp[index] = val;
+        setOtp(newOtp);
+
+        if (val && index < 5) {
+            otpRefs.current[index + 1]?.focus();
+        }
+
+        if (newOtp.every(x => x !== '')) {
+            handleVerifyOtp(newOtp.join(''));
+        }
+    };
+
+    const handleOtpKeyDown = (e, index) => {
+        if (e.key === 'Backspace' && !otp[index] && index > 0) {
+            otpRefs.current[index - 1]?.focus();
+        }
+    };
+
     // Auto-navigate to dashboard on successful login
     useEffect(() => {
         if (status === 'success') {
@@ -725,6 +822,85 @@ const Login = ({ onLoginSuccess }) => {
         );
     }
 
+    if (showOtpFlow) {
+        return (
+            <div className="login-content" style={{ padding: '20px 0' }}>
+                <style>{`
+                    @keyframes shake {
+                        0%, 100% { transform: translateX(0); }
+                        25% { transform: translateX(-5px); }
+                        50% { transform: translateX(5px); }
+                        75% { transform: translateX(-5px); }
+                    }
+                    .otp-invalid { animation: shake 0.4s ease-in-out; border-color: #DC2626 !important; }
+                    .otp-input { flex: 1; width: 0; height: 50px; text-align: center; font-size: 20px; border-radius: 8px; border: 1px solid #ddd; outline: none; transition: border-color 0.2s; }
+                    .otp-input:focus { border-color: var(--color-primary); }
+                `}</style>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 15, width: '100%' }}>
+                    <div style={{ marginBottom: 10, textAlign: 'center' }}>
+                        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Login with Email</h3>
+                    </div>
+
+                    {otpError && (
+                        <div style={{ padding: 10, background: '#FEE2E2', color: '#DC2626', borderRadius: 8, fontSize: 13, textAlign: 'center' }}>
+                            {otpError}
+                        </div>
+                    )}
+
+                    {otpStep === 'email' ? (
+                        <form onSubmit={handleRequestOtp} style={{ display: 'flex', flexDirection: 'column', gap: 15, width: '100%' }}>
+                            <div style={{ textAlign: 'left', width: '100%' }}>
+                                <label className="form-label">School Email</label>
+                                <input type="email" className="form-input" value={email} onChange={e => setEmail(e.target.value)} placeholder="Enter your email" disabled={otpLoading} autoFocus style={{ width: '100%', boxSizing: 'border-box', padding: '14px', fontSize: '16px' }} />
+                            </div>
+                            <button type="submit" className="btn btn-primary" disabled={otpLoading} style={{ width: '100%', padding: '12px' }}>
+                                {otpLoading ? 'Sending...' : 'Send OTP'}
+                            </button>
+                        </form>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
+                            <p style={{ textAlign: 'center', color: '#666', fontSize: 14 }}>
+                                We sent an OTP to {email}. <br /><a href="#" onClick={(e) => { e.preventDefault(); setOtpStep('email'); setOtpError(''); }} style={{ color: 'var(--color-primary)' }}>Edit Email</a>
+                            </p>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%' }}>
+                                {otp.map((digit, i) => (
+                                    <input
+                                        key={i}
+                                        ref={el => otpRefs.current[i] = el}
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={6}
+                                        value={digit}
+                                        onChange={e => handleOtpChange(e, i)}
+                                        onKeyDown={e => handleOtpKeyDown(e, i)}
+                                        disabled={otpLoading}
+                                        className={`otp-input ${otpError ? 'otp-invalid' : ''}`}
+                                    />
+                                ))}
+                            </div>
+                            <button className="btn-secondary" onClick={(e) => { e.preventDefault(); handleRequestOtp(e); }} disabled={resendSeconds > 0 || otpLoading} style={{ width: '100%' }}>
+                                {resendSeconds > 0 ? `Resend OTP in ${resendSeconds}s` : 'Resend OTP'}
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="or-divider" style={{ marginTop: 20 }}>OR</div>
+                <div style={{ width: '100%' }}>
+                    <button id="ms-login-btn-otp" className="btn-ms" onClick={handleMsLogin} disabled={status === 'ms_loading' || otpLoading} style={{ width: '100%' }}>
+                        {status === 'ms_loading' ? <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, marginRight: 8, display: 'inline-block', verticalAlign: 'middle' }}></div> : <MicrosoftLogo />}
+                        Continue with Microsoft
+                    </button>
+                </div>
+                <div style={{ marginTop: 16, textAlign: 'center' }}>
+                    <a href="#" onClick={(e) => { e.preventDefault(); setShowOtpFlow(false); setOtpStep('email'); setOtpError(''); createSession(); }} style={{ color: '#666', fontSize: 14, textDecoration: 'underline' }}>
+                        Return to Mobile Login
+                    </a>
+                </div>
+            </div>
+        );
+    }
+
     const isBusy = status === 'loading' || status === 'ms_loading';
 
     return (
@@ -738,7 +914,19 @@ const Login = ({ onLoginSuccess }) => {
                 {status === 'timeout' && (<div className="qr-expired"><svg className="icon-clock" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg><p style={{ color: '#888', fontWeight: 600 }}>QR code expired</p><p style={{ fontSize: '0.75rem', color: '#aaa' }}>No scan received within 30 seconds.</p><button className="btn-reload" onClick={createSession}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>Reload QR</button></div>)}
                 {status === 'error' && (<div className="qr-expired"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ddd" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg><button className="btn-reload" onClick={createSession}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>Try Again</button></div>)}
             </div>
-            {!isBusy && (<><div className="or-divider">OR</div><button id="ms-login-btn" className="btn-ms" onClick={handleMsLogin} disabled={status === 'ms_loading'}><MicrosoftLogo />Login with School Email</button></>)}
+            {!isBusy && (
+                <>
+                    <div className="or-divider">OR</div>
+                    <button id="ms-login-btn" className="btn-ms" onClick={handleMsLogin} disabled={status === 'ms_loading'}>
+                        <MicrosoftLogo />Continue with Microsoft
+                    </button>
+                    <div style={{ marginTop: 16, textAlign: 'center' }}>
+                        <a href="#" onClick={(e) => { e.preventDefault(); clearAllTimers(); setShowOtpFlow(true); }} style={{ color: '#666', fontSize: 14, textDecoration: 'underline' }}>
+                            Login with email
+                        </a>
+                    </div>
+                </>
+            )}
         </div>
     );
 };
@@ -15869,13 +16057,23 @@ const MultiSelectDropdown = ({ options, selected, onChange, placeholder = 'Selec
         }
     };
 
+    const selectedLabels = options.filter(o => selected.includes(o.value)).map(o => o.label);
+
     return (
         <div ref={containerRef} style={{ width: '100%', opacity: disabled ? 0.6 : 1 }}>
-            <div className={`form-input ${disabled ? 'disabled' : ''}`} onClick={handleOpen} style={{ cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 38, background: disabled ? '#f9fafb' : '#fff' }}>
-                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, color: selected.length ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                    {selected.length === 0 ? placeholder : `${selected.length} selected`}
+            <div className={`form-input ${disabled ? 'disabled' : ''}`} onClick={handleOpen} style={{ cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 38, height: 'auto', background: disabled ? '#f9fafb' : '#fff', padding: '4px 8px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1, marginRight: 8, padding: '2px 0' }}>
+                    {selected.length === 0 ? (
+                        <span style={{ fontSize: 13, color: 'var(--text-muted)', padding: '2px 0' }}>{placeholder}</span>
+                    ) : (
+                        selectedLabels.map(label => (
+                            <span key={label} style={{ background: 'var(--color-primary, #4f46e5)', color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 12, display: 'inline-flex', alignItems: 'center' }}>
+                                {label}
+                            </span>
+                        ))
+                    )}
                 </div>
-                <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} style={{ color: 'var(--text-muted)' }} />
+                <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
             </div>
             {open && (
                 <DropdownPortal>
@@ -15899,10 +16097,10 @@ const MultiSelectDropdown = ({ options, selected, onChange, placeholder = 'Selec
 const AdminSlotsManager = () => {
     const today = new Date();
     const pad = n => String(n).padStart(2, '0');
-    const toYMD = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const toYM = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 
     // Filter state
-    const [filterDate, setFilterDate] = useState(toYMD(today));
+    const [filterMonth, setFilterMonth] = useState(toYM(today));
     const [allClassrooms, setAllClassrooms] = useState([]);
     const [allUsers, setAllUsers] = useState([]);
     const [selClassrooms, setSelClassrooms] = useState([]);
@@ -15915,13 +16113,15 @@ const AdminSlotsManager = () => {
 
     // Generate form state
     const [showGenModal, setShowGenModal] = useState(false);
-    const [genStartDate, setGenStartDate] = useState(toYMD(today));
-    const [genEndDate, setGenEndDate] = useState(toYMD(today));
+    const [genStartDate, setGenStartDate] = useState('');
+    const [genEndDate, setGenEndDate] = useState('');
     const [genDays, setGenDays] = useState([]);
-    const [genStartTime, setGenStartTime] = useState('09:00');
-    const [genDuration, setGenDuration] = useState(30);
-    const [genInterval, setGenInterval] = useState(5);
-    const [genCount, setGenCount] = useState(1);
+    const [genStartTime, setGenStartTime] = useState('');
+    const [genDuration, setGenDuration] = useState('');
+    const [genInterval, setGenInterval] = useState('');
+    const [genEndTime, setGenEndTime] = useState('');
+    const [genCalculatedCount, setGenCalculatedCount] = useState(0);
+    const [genPreviewError, setGenPreviewError] = useState('');
     const [genClassrooms, setGenClassrooms] = useState([]);
     const [genUsers, setGenUsers] = useState([]);
     const [genPreview, setGenPreview] = useState([]);
@@ -15939,12 +16139,12 @@ const AdminSlotsManager = () => {
             .catch(() => { });
     }, []);
 
-    const fetchSlots = async () => {
-        if (!filterDate) return;
+    const fetchSlots = useCallback(async () => {
+        if (!filterMonth) return;
         setLoadingSlots(true);
         setChecked(new Set());
         try {
-            const params = { date: filterDate };
+            const params = { month: filterMonth };
             if (selClassrooms.length) params.classroomIds = selClassrooms.join(',');
             if (selUsers.length) params.userIds = selUsers.join(',');
             const res = await api.get('/api/appointments/admin/slots', { params });
@@ -15954,7 +16154,11 @@ const AdminSlotsManager = () => {
         } finally {
             setLoadingSlots(false);
         }
-    };
+    }, [filterMonth, selClassrooms.join(','), selUsers.join(',')]);
+
+    useEffect(() => {
+        fetchSlots();
+    }, [fetchSlots]);
 
     const deleteSlot = async (slotId) => {
         if (!window.confirm('Delete this slot?')) return;
@@ -15994,12 +16198,46 @@ const AdminSlotsManager = () => {
     };
 
     const buildPreview = () => {
-        if (!genStartDate || !genEndDate || !genDays.length || !genStartTime || genDuration <= 0 || genCount <= 0) {
+        if (!genStartDate || !genEndDate || !genDays.length || !genStartTime || !genEndTime || !genDuration || genDuration <= 0) {
             setGenPreview([]);
+            setGenCalculatedCount(0);
+            setGenPreviewError('');
             return;
         }
-        const preview = [];
+
         const [sh, sm] = genStartTime.split(':').map(Number);
+        const [eh, em] = genEndTime.split(':').map(Number);
+        const startMin = sh * 60 + sm;
+        const endMin = eh * 60 + em;
+
+        if (endMin <= startMin) {
+            setGenPreview([]);
+            setGenCalculatedCount(0);
+            setGenPreviewError('End time must be after start time.');
+            return;
+        }
+
+        let count = 0;
+        let currentMin = startMin;
+        const durationNum = Number(genDuration);
+        const intervalNum = Number(genInterval || 0);
+
+        while (currentMin + durationNum <= endMin) {
+            count++;
+            currentMin += durationNum + intervalNum;
+        }
+
+        if (count === 0) {
+            setGenPreview([]);
+            setGenCalculatedCount(0);
+            setGenPreviewError('Slot duration exceeds the available time window.');
+            return;
+        }
+
+        setGenCalculatedCount(count);
+        setGenPreviewError('');
+
+        const preview = [];
         const sd = new Date(genStartDate + 'T00:00:00');
         const ed = new Date(genEndDate + 'T00:00:00');
 
@@ -16007,9 +16245,9 @@ const AdminSlotsManager = () => {
         while (cur <= ed) {
             const dow = cur.getDay();
             if (genDays.includes(dow)) {
-                for (let i = 0; i < genCount; i++) {
-                    const slotStartMin = sh * 60 + sm + i * (genDuration + genInterval);
-                    const slotEndMin = slotStartMin + genDuration;
+                for (let i = 0; i < count; i++) {
+                    const slotStartMin = startMin + i * (durationNum + intervalNum);
+                    const slotEndMin = slotStartMin + durationNum;
                     const sH = Math.floor(slotStartMin / 60), sM = slotStartMin % 60;
                     const eH = Math.floor(slotEndMin / 60), eM = slotEndMin % 60;
                     const ymd = `${cur.getFullYear()}-${pad(cur.getMonth() + 1)}-${pad(cur.getDate())}`;
@@ -16021,11 +16259,11 @@ const AdminSlotsManager = () => {
         setGenPreview(preview);
     };
 
-    useEffect(() => { buildPreview(); }, [genStartDate, genEndDate, genDays, genStartTime, genDuration, genInterval, genCount]);
+    useEffect(() => { buildPreview(); }, [genStartDate, genEndDate, genDays, genStartTime, genEndTime, genDuration, genInterval]);
 
     const handleGenerate = async () => {
-        if (!genStartDate || !genEndDate || !genDays.length || !genStartTime || genDuration <= 0 || genCount <= 0) {
-            alert('Please fill in all required fields.');
+        if (!genStartDate || !genEndDate || !genDays.length || !genStartTime || !genEndTime || !genDuration || genDuration <= 0 || genCalculatedCount <= 0) {
+            alert('Please fill in all required fields and ensure the time range is valid.');
             return;
         }
         setGenLoading(true);
@@ -16038,7 +16276,7 @@ const AdminSlotsManager = () => {
                 startTime: genStartTime,
                 duration: Number(genDuration),
                 interval: Number(genInterval),
-                count: Number(genCount),
+                count: Number(genCalculatedCount),
                 classroomIds: genClassrooms.length ? genClassrooms : null,
                 userIds: genUsers.length ? genUsers : null,
             };
@@ -16061,47 +16299,46 @@ const AdminSlotsManager = () => {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-            {/* Filter Panel */}
-            <div className="card" style={{ background: 'var(--card-bg)', borderRadius: 12, padding: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
-                        View Slots
-                    </h3>
-                    <button className="btn btn-primary" onClick={() => setShowGenModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Icon name="plus-circle" size={14} />
-                        Generate Slots
-                    </button>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
-                    <div>
-                        <label className="form-label">Date</label>
-                        <input type="date" className="form-input" value={filterDate} onChange={e => setFilterDate(e.target.value)} style={{ width: 160 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24, alignItems: 'stretch' }}>
+            {/* Top Bar: Filters & Actions */}
+            <div className="card" style={{ background: 'var(--card-bg)', borderRadius: 12, padding: '16px 20px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'end', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'end' }}>
+                        <div>
+                            <label className="form-label">Month</label>
+                            <input
+                                type="month"
+                                className="form-input"
+                                value={filterMonth}
+                                onChange={e => setFilterMonth(e.target.value)}
+                                style={{ height: 38 }}
+                            />
+                        </div>
+                        <div>
+                            <label className="form-label">Classroom Filter</label>
+                            <MultiSelectDropdown
+                                options={allClassrooms.map(c => ({ value: c.Id || c.id, label: c.name || c.Name }))}
+                                selected={selClassrooms}
+                                onChange={setSelClassrooms}
+                                placeholder="Select Classroom(s)"
+                                disabled={selUsers.length > 0}
+                            />
+                        </div>
+                        <div>
+                            <label className="form-label">Teacher Filter</label>
+                            <MultiSelectDropdown
+                                options={allUsers.map(u => ({ value: u.id || u.Id, label: u.name || u.Name }))}
+                                selected={selUsers}
+                                onChange={setSelUsers}
+                                placeholder="Select User(s)"
+                                disabled={selClassrooms.length > 0}
+                            />
+                        </div>
                     </div>
                     <div>
-                        <label className="form-label">Classroom(s)</label>
-                        <MultiSelectDropdown
-                            options={allClassrooms.map(c => ({ value: c.Id || c.id, label: c.name || c.Name }))}
-                            selected={selClassrooms}
-                            onChange={setSelClassrooms}
-                            placeholder="All Classrooms"
-                        />
-                    </div>
-                    <div>
-                        <label className="form-label">User(s) / Teacher(s)</label>
-                        <MultiSelectDropdown
-                            options={allUsers.map(u => ({ value: u.id || u.Id, label: u.name || u.Name }))}
-                            selected={selUsers}
-                            onChange={setSelUsers}
-                            placeholder="All Users"
-                        />
-                    </div>
-                    <div>
-                        <button className="btn btn-primary" onClick={fetchSlots} disabled={!filterDate || loadingSlots}
-                            style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', height: 38 }}>
-                            <Icon name="refresh-cw" size={14} />
-                            {loadingSlots ? 'Loading...' : 'Load Slots'}
+                        <button className="btn btn-primary" onClick={() => setShowGenModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}>
+                            <Icon name="plus-circle" size={14} />
+                            Open Slots
                         </button>
                     </div>
                 </div>
@@ -16132,7 +16369,7 @@ const AdminSlotsManager = () => {
             {loadingSlots && <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Loading slots...</div>}
             {!loadingSlots && slots.length === 0 && (
                 <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', background: 'var(--card-bg)', borderRadius: 12, border: '1px solid var(--border-color)' }}>
-                    <div>Select a date and click "Load Slots" to view appointment slots.</div>
+                    <div>No appointment slots found for the selected criteria.</div>
                 </div>
             )}
             {!loadingSlots && slots.length > 0 && (
@@ -16153,238 +16390,356 @@ const AdminSlotsManager = () => {
                             {slots.map((slot, idx) => {
                                 const isReserved = slot.status === 'reserved';
                                 const isChecked = checked.has(slot.id);
+                                const isFirstOfDay = idx === 0 || slots[idx - 1].date !== slot.date;
                                 return (
-                                    <tr key={slot.id} style={{
-                                        borderBottom: '1px solid var(--border-color)',
-                                        background: isChecked ? 'rgba(99,102,241,0.06)' : idx % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)',
-                                        transition: 'background 0.15s'
-                                    }}>
-                                        <td style={{ padding: '10px 12px' }}>
-                                            {!isReserved && (
-                                                <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(slot.id)} />
-                                            )}
-                                        </td>
-                                        <td style={{ padding: '10px 12px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                            {slot.start} &ndash; {slot.end}
-                                        </td>
-                                        <td style={{ padding: '10px 12px' }}>
-                                            <span style={{
-                                                display: 'inline-flex', alignItems: 'center', gap: 5,
-                                                padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                                                background: isReserved ? '#FEE2E2' : '#DCFCE7',
-                                                color: isReserved ? '#DC2626' : '#16A34A'
-                                            }}>
-                                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: isReserved ? '#DC2626' : '#16A34A', display: 'inline-block' }} />
-                                                {isReserved ? 'Reserved' : 'Available'}
-                                            </span>
-                                        </td>
-                                        <td style={{ padding: '10px 12px' }}>
-                                            {slot.unrestricted ? (
-                                                <span style={{ fontStyle: 'italic', fontSize: 11, color: 'var(--text-muted)' }}>All</span>
-                                            ) : slot.classrooms && slot.classrooms.length > 0 ? (
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                                    {slot.classrooms.map((c, i) => (
-                                                        <span key={i} style={{ background: '#EFF6FF', color: '#1D4ED8', padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 500 }}>{c.name}</span>
-                                                    ))}
-                                                </div>
-                                            ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
-                                        </td>
-                                        <td style={{ padding: '10px 12px' }}>
-                                            {slot.users && slot.users.length > 0 ? (
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                                    {slot.users.map((u, i) => (
-                                                        <span key={i} style={{ background: '#FDF4FF', color: '#7C3AED', padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 500 }}>{u.name}</span>
-                                                    ))}
-                                                </div>
-                                            ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
-                                        </td>
-                                        <td style={{ padding: '10px 12px' }}>
-                                            {slot.reservations && slot.reservations.length > 0 ? (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                                    {slot.reservations.map((r, i) => (
-                                                        <div key={i} style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                                                            <strong>{r.studentName}</strong>
-                                                            <span style={{ marginLeft: 4, color: 'var(--text-muted)' }}>/ {r.teacherName}</span>
-                                                            <span style={{
-                                                                marginLeft: 6, padding: '1px 6px', borderRadius: 8, fontSize: 10,
-                                                                background: r.status === 'Booked' ? '#DCFCE7' : '#F3F4F6',
-                                                                color: r.status === 'Booked' ? '#16A34A' : '#6B7280'
-                                                            }}>{r.status}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11 }}>None</span>}
-                                        </td>
-                                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                                            <button className="btn btn-danger btn-sm"
-                                                disabled={isReserved}
-                                                onClick={() => deleteSlot(slot.id)}
-                                                title={isReserved ? 'Cannot delete - has active reservation' : 'Delete slot'}
-                                                style={{ opacity: isReserved ? 0.35 : 1, padding: '4px 10px' }}>
-                                                <Icon name="trash-2" size={13} />
-                                            </button>
-                                        </td>
-                                    </tr>
+                                    <React.Fragment key={slot.id}>
+                                        {isFirstOfDay && (
+                                            <tr>
+                                                <td colSpan="7" style={{ background: '#f8fafc', padding: '12px 16px', fontWeight: 600, borderBottom: '1px solid var(--border-color)', borderTop: idx > 0 ? '2px solid var(--border-color)' : 'none', color: '#334155' }}>
+                                                    {new Date(slot.date + 'T00:00:00').toLocaleDateString('default', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                                </td>
+                                            </tr>
+                                        )}
+                                        <tr style={{
+                                            borderBottom: '1px solid var(--border-color)',
+                                            background: isChecked ? 'rgba(99,102,241,0.06)' : 'transparent',
+                                            transition: 'background 0.15s'
+                                        }}>
+                                            <td style={{ padding: '10px 12px' }}>
+                                                {!isReserved && (
+                                                    <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(slot.id)} />
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '10px 12px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                {slot.start} &ndash; {slot.end}
+                                            </td>
+                                            <td style={{ padding: '10px 12px' }}>
+                                                <span style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                                                    padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                                                    background: isReserved ? '#FEE2E2' : '#DCFCE7',
+                                                    color: isReserved ? '#DC2626' : '#16A34A'
+                                                }}>
+                                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: isReserved ? '#DC2626' : '#16A34A', display: 'inline-block' }} />
+                                                    {isReserved ? 'Reserved' : 'Available'}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '10px 12px' }}>
+                                                {slot.unrestricted ? (
+                                                    <span style={{ fontStyle: 'italic', fontSize: 11, color: 'var(--text-muted)' }}>All</span>
+                                                ) : slot.classrooms && slot.classrooms.length > 0 ? (
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                                        {slot.classrooms.map((c, i) => (
+                                                            <span key={i} style={{ background: '#EFF6FF', color: '#1D4ED8', padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 500 }}>{c.name}</span>
+                                                        ))}
+                                                    </div>
+                                                ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                                            </td>
+                                            <td style={{ padding: '10px 12px' }}>
+                                                {slot.users && slot.users.length > 0 ? (
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                                        {slot.users.map((u, i) => (
+                                                            <span key={i} style={{ background: '#FDF4FF', color: '#7C3AED', padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 500 }}>{u.name}</span>
+                                                        ))}
+                                                    </div>
+                                                ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                                            </td>
+                                            <td style={{ padding: '10px 12px' }}>
+                                                {slot.reservations && slot.reservations.length > 0 ? (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                        {slot.reservations.map((r, i) => (
+                                                            <div key={i} style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                                                                <strong>{r.studentName}</strong>
+                                                                <span style={{ marginLeft: 4, color: 'var(--text-muted)' }}>/ {r.teacherName}</span>
+                                                                <span style={{
+                                                                    marginLeft: 6, padding: '1px 6px', borderRadius: 8, fontSize: 10,
+                                                                    background: r.status === 'Booked' ? '#DCFCE7' : '#F3F4F6',
+                                                                    color: r.status === 'Booked' ? '#16A34A' : '#6B7280'
+                                                                }}>{r.status}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11 }}>None</span>}
+                                            </td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                                <button className="btn btn-danger btn-sm"
+                                                    disabled={isReserved}
+                                                    onClick={() => deleteSlot(slot.id)}
+                                                    title={isReserved ? 'Cannot delete - has active reservation' : 'Delete slot'}
+                                                    style={{ opacity: isReserved ? 0.35 : 1, padding: '4px 10px' }}>
+                                                    <Icon name="trash-2" size={13} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </React.Fragment>
                                 );
                             })}
                         </tbody>
                     </table>
                 </div>
             )}
-
             {/* Generate Slots Modal */}
-            {showGenModal && (
-                <GlobalCanvasPortal>
-                    <div className="modal-overlay" onClick={() => setShowGenModal(false)}>
-                        <div className="modal-box" style={{ maxWidth: 650, width: '90%', padding: 0 }} onClick={e => e.stopPropagation()}>
-                            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    Generate Recurring Slots
-                                </h3>
-                            </div>
-
-                            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 24, maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
-                                {/* Date range */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                                    <div>
-                                        <label className="form-label">Start Date <span style={{ color: '#ef4444' }}>*</span></label>
-                                        <input type="date" className="form-input" value={genStartDate} onChange={e => setGenStartDate(e.target.value)} />
-                                    </div>
-                                    <div>
-                                        <label className="form-label">End Date <span style={{ color: '#ef4444' }}>*</span></label>
-                                        <input type="date" className="form-input" value={genEndDate} onChange={e => setGenEndDate(e.target.value)} />
-                                    </div>
+            {
+                showGenModal && (
+                    <GlobalCanvasPortal>
+                        <div className="modal-overlay" onClick={() => setShowGenModal(false)}>
+                            <div className="modal-box" style={{ maxWidth: 650, width: '90%', padding: 0 }} onClick={e => e.stopPropagation()}>
+                                <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        Generate Recurring Slots
+                                    </h3>
                                 </div>
 
-                                {/* Days of week */}
-                                <div>
-                                    <label className="form-label">Days of Week <span style={{ color: '#ef4444' }}>*</span></label>
-                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                        {DAY_NAMES.map((dn, i) => (
-                                            <button key={i} type="button"
-                                                onClick={() => toggleMulti(i, genDays, setGenDays)}
-                                                style={{
-                                                    padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600,
-                                                    border: '2px solid',
-                                                    borderColor: genDays.includes(i) ? 'var(--primary-color)' : 'var(--border-color)',
-                                                    background: genDays.includes(i) ? 'var(--primary-color)' : 'transparent',
-                                                    color: genDays.includes(i) ? '#fff' : 'var(--text-secondary)',
-                                                    cursor: 'pointer', transition: 'all 0.15s'
-                                                }}>
-                                                {dn}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Time settings */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 16 }}>
-                                    <div>
-                                        <label className="form-label">Start Time <span style={{ color: '#ef4444' }}>*</span></label>
-                                        <input type="time" className="form-input" value={genStartTime} onChange={e => setGenStartTime(e.target.value)} />
-                                    </div>
-                                    <div>
-                                        <label className="form-label">Duration (min) <span style={{ color: '#ef4444' }}>*</span></label>
-                                        <input type="number" className="form-input" min={5} max={180} value={genDuration} onChange={e => setGenDuration(parseInt(e.target.value) || 30)} />
-                                    </div>
-                                    <div>
-                                        <label className="form-label">Gap Between (min)</label>
-                                        <input type="number" className="form-input" min={0} max={120} value={genInterval} onChange={e => setGenInterval(parseInt(e.target.value) || 0)} />
-                                    </div>
-                                    <div>
-                                        <label className="form-label">Slots/Day <span style={{ color: '#ef4444' }}>*</span></label>
-                                        <input type="number" className="form-input" min={1} max={20} value={genCount} onChange={e => setGenCount(parseInt(e.target.value) || 1)} />
-                                    </div>
-                                </div>
-
-                                {/* Restrictions */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, background: 'var(--sidebar-bg)', padding: 16, borderRadius: 8 }}>
-                                    <div>
-                                        <label className="form-label" style={{ marginBottom: 4 }}>Classroom Restriction</label>
-                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>Empty = all classrooms</div>
-                                        <MultiSelectDropdown
-                                            options={allClassrooms.map(c => ({ value: c.Id || c.id, label: c.name || c.Name }))}
-                                            selected={genClassrooms}
-                                            onChange={setGenClassrooms}
-                                            placeholder="Select Classrooms"
-                                            disabled={genUsers.length > 0}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="form-label" style={{ marginBottom: 4 }}>Teacher Restriction</label>
-                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>Empty = all teachers</div>
-                                        <MultiSelectDropdown
-                                            options={allUsers.map(u => ({ value: u.id || u.Id, label: u.name || u.Name }))}
-                                            selected={genUsers}
-                                            onChange={setGenUsers}
-                                            placeholder="Select Teachers"
-                                            disabled={genClassrooms.length > 0}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Preview */}
-                                {genPreview.length > 0 && (
-                                    <div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                                            <label className="form-label" style={{ margin: 0 }}>Preview</label>
-                                            <span style={{ background: '#EFF6FF', color: '#1D4ED8', padding: '2px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600 }}>
-                                                {genPreview.length} slot{genPreview.length !== 1 ? 's' : ''} will be created
-                                            </span>
+                                <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 24, maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+                                    {/* Date range */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                        <div>
+                                            <label className="form-label">Start Date <span style={{ color: '#ef4444' }}>*</span></label>
+                                            <input type="date" className="form-input" value={genStartDate} onChange={e => setGenStartDate(e.target.value)} />
                                         </div>
-                                        <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 8 }}>
-                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                                                <thead style={{ position: 'sticky', top: 0, background: 'var(--sidebar-bg)', zIndex: 1 }}>
-                                                    <tr>
-                                                        <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>Date</th>
-                                                        <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>Start</th>
-                                                        <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>End</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {genPreview.map((p, i) => (
-                                                        <tr key={i} style={{ borderBottom: i < genPreview.length - 1 ? '1px solid var(--border-color)' : 'none', background: i % 2 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
-                                                            <td style={{ padding: '6px 12px' }}>{p.date}</td>
-                                                            <td style={{ padding: '6px 12px' }}>{p.start}</td>
-                                                            <td style={{ padding: '6px 12px' }}>{p.end}</td>
+                                        <div>
+                                            <label className="form-label">End Date <span style={{ color: '#ef4444' }}>*</span></label>
+                                            <input type="date" className="form-input" value={genEndDate} onChange={e => setGenEndDate(e.target.value)} />
+                                        </div>
+                                    </div>
+
+                                    {/* Days of week */}
+                                    <div>
+                                        <label className="form-label">Days of Week <span style={{ color: '#ef4444' }}>*</span></label>
+                                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                            {DAY_NAMES.map((dn, i) => (
+                                                <button key={i} type="button"
+                                                    onClick={() => toggleMulti(i, genDays, setGenDays)}
+                                                    style={{
+                                                        padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+                                                        border: '2px solid',
+                                                        borderColor: genDays.includes(i) ? 'var(--color-primary)' : 'var(--border-color)',
+                                                        background: genDays.includes(i) ? 'var(--color-primary)' : 'transparent',
+                                                        color: genDays.includes(i) ? '#fff' : 'var(--text-secondary)',
+                                                        cursor: 'pointer', transition: 'all 0.15s'
+                                                    }}>
+                                                    {dn}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Time settings */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 16 }}>
+                                        <div>
+                                            <label className="form-label">Start Time <span style={{ color: '#ef4444' }}>*</span></label>
+                                            <input type="time" className="form-input" value={genStartTime} onChange={e => setGenStartTime(e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="form-label">End Time <span style={{ color: '#ef4444' }}>*</span></label>
+                                            <input type="time" className="form-input" value={genEndTime} onChange={e => setGenEndTime(e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="form-label">Duration (min) <span style={{ color: '#ef4444' }}>*</span></label>
+                                            <input type="number" className="form-input" min={5} max={180} value={genDuration} onChange={e => setGenDuration(e.target.value === '' ? '' : parseInt(e.target.value))} />
+                                        </div>
+                                        <div>
+                                            <label className="form-label">Gap Between (min)</label>
+                                            <input type="number" className="form-input" min={0} max={120} value={genInterval} onChange={e => setGenInterval(e.target.value === '' ? '' : parseInt(e.target.value))} />
+                                        </div>
+                                    </div>
+
+                                    {/* Filters */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                        <div>
+                                            <label className="form-label">Classrooms</label>
+                                            <MultiSelectDropdown
+                                                options={allClassrooms.map(c => ({ value: c.Id || c.id, label: c.name || c.Name }))}
+                                                selected={genClassrooms}
+                                                onChange={setGenClassrooms}
+                                                placeholder="Select Classroom(s)"
+                                                disabled={genUsers.length > 0}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="form-label">Teachers</label>
+                                            <MultiSelectDropdown
+                                                options={allUsers.map(u => ({ value: u.id || u.Id, label: u.name || u.Name }))}
+                                                selected={genUsers}
+                                                onChange={setGenUsers}
+                                                placeholder="Select Teacher(s)"
+                                                disabled={genClassrooms.length > 0}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Preview */}
+                                    {genPreviewError && (
+                                        <div style={{ color: '#DC2626', fontSize: 13, fontWeight: 500, marginBottom: 10 }}>
+                                            <Icon name="alert-circle" size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                                            {genPreviewError}
+                                        </div>
+                                    )}
+                                    {genPreview.length > 0 && (
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                                <label className="form-label" style={{ margin: 0 }}>Preview</label>
+                                                <span style={{ background: '#EFF6FF', color: '#1D4ED8', padding: '2px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600 }}>
+                                                    {genPreview.length} slot{genPreview.length !== 1 ? 's' : ''} will be created
+                                                </span>
+                                            </div>
+                                            <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 8 }}>
+                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                                    <thead style={{ position: 'sticky', top: 0, background: 'var(--sidebar-bg)', zIndex: 1 }}>
+                                                        <tr>
+                                                            <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>Date</th>
+                                                            <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>Start</th>
+                                                            <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>End</th>
                                                         </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
+                                                    </thead>
+                                                    <tbody>
+                                                        {genPreview.map((p, i) => (
+                                                            <tr key={i} style={{ borderBottom: i < genPreview.length - 1 ? '1px solid var(--border-color)' : 'none', background: i % 2 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
+                                                                <td style={{ padding: '6px 12px' }}>{p.date}</td>
+                                                                <td style={{ padding: '6px 12px' }}>{p.start}</td>
+                                                                <td style={{ padding: '6px 12px' }}>{p.end}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
+                                    )}
 
-                                {genResult && (
-                                    <div style={{
-                                        padding: '10px 16px', borderRadius: 8, fontWeight: 600, fontSize: 13,
-                                        background: genResult.success ? '#DCFCE7' : '#FEE2E2',
-                                        color: genResult.success ? '#15803D' : '#DC2626'
-                                    }}>
-                                        {genResult.success ? 'Success: ' : 'Error: '}{genResult.message}
-                                    </div>
-                                )}
-                            </div>
+                                    {genResult && (
+                                        <div style={{
+                                            padding: '10px 16px', borderRadius: 8, fontWeight: 600, fontSize: 13,
+                                            background: genResult.success ? '#DCFCE7' : '#FEE2E2',
+                                            color: genResult.success ? '#15803D' : '#DC2626'
+                                        }}>
+                                            {genResult.success ? 'Success: ' : 'Error: '}{genResult.message}
+                                        </div>
+                                    )}
+                                </div>
 
-                            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 10, background: 'var(--sidebar-bg)' }}>
-                                <button className="btn-secondary" onClick={() => setShowGenModal(false)}>Cancel</button>
-                                <button className="btn btn-primary"
-                                    disabled={genLoading || genPreview.length === 0 || (genClassrooms.length === 0 && genUsers.length === 0)}
-                                    onClick={handleGenerate}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: (genLoading || genPreview.length === 0 || (genClassrooms.length === 0 && genUsers.length === 0)) ? 0.5 : 1 }}>
-                                    <Icon name={genLoading ? 'loader' : ''} size={14} />
-                                    {genLoading ? 'Generating...' : ('Generate ' + (genPreview.length > 0 ? genPreview.length + ' ' : '') + 'Slot' + (genPreview.length !== 1 ? 's' : ''))}
-                                </button>
+                                <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 10, background: 'var(--sidebar-bg)' }}>
+                                    <button className="btn-secondary" onClick={() => setShowGenModal(false)}>Cancel</button>
+                                    <button className="btn btn-primary"
+                                        disabled={genLoading || genPreview.length === 0 || (genClassrooms.length === 0 && genUsers.length === 0)}
+                                        onClick={handleGenerate}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: (genLoading || genPreview.length === 0 || (genClassrooms.length === 0 && genUsers.length === 0)) ? 0.5 : 1 }}>
+                                        <Icon name={genLoading ? 'loader' : ''} size={14} />
+                                        {genLoading ? 'Generating...' : ('Generate ' + (genPreview.length > 0 ? genPreview.length + ' ' : '') + 'Slot' + (genPreview.length !== 1 ? 's' : ''))}
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </GlobalCanvasPortal>
-            )}
-        </div>
+                    </GlobalCanvasPortal>
+                )
+            }
+        </div >
     );
 };
 // ─── END ADMIN SLOT MANAGER ───────────────────────────────────────────────────
 
+const AdminEditSlotModal = ({ slot, onClose, onSaved }) => {
+    const [date, setDate] = useState(slot.date);
+    const [start, setStart] = useState(slot.start);
+    const [end, setEnd] = useState(slot.end);
+    const [classrooms, setClassrooms] = useState(slot.classrooms?.map(c => c.id) || []);
+    const [users, setUsers] = useState(slot.users?.map(u => u.id) || []);
+
+    const [allClassrooms, setAllClassrooms] = useState([]);
+    const [allUsers, setAllUsers] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        api.get('/api/classrooms', { params: { col: 'id,name', filters: "status eq 'Current'", limit: 200 } })
+            .then(r => setAllClassrooms(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : [])))
+            .catch(() => { });
+        api.get('/api/users', { params: { col: 'id,name', role: 'Teacher', status: 'Current', limit: 300 } })
+            .then(r => setAllUsers(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : [])))
+            .catch(() => { });
+    }, []);
+
+    const handleSave = async () => {
+        if (!date || !start || !end) {
+            setError('Date, Start, and End times are required.');
+            return;
+        }
+        setLoading(true);
+        setError('');
+        try {
+            await api.put(`/api/appointments/admin/slots/${slot.slotId}`, {
+                date,
+                start,
+                end,
+                classroomIds: classrooms,
+                userIds: users
+            });
+            onSaved();
+        } catch (e) {
+            setError(e.response?.data?.message || 'Failed to update slot.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <GlobalCanvasPortal>
+            <div className="modal-overlay" onClick={onClose}>
+                <div className="modal-box" style={{ maxWidth: 500, width: '90%', padding: 0 }} onClick={e => e.stopPropagation()}>
+                    <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Edit Slot</h3>
+                    </div>
+                    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+                        {error && (
+                            <div style={{ padding: '10px 16px', background: '#FEE2E2', color: '#DC2626', borderRadius: 8, fontSize: 13, fontWeight: 500 }}>
+                                {error}
+                            </div>
+                        )}
+                        <div>
+                            <label className="form-label">Date</label>
+                            <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                            <div>
+                                <label className="form-label">Start Time</label>
+                                <input type="time" className="form-input" value={start} onChange={e => setStart(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="form-label">End Time</label>
+                                <input type="time" className="form-input" value={end} onChange={e => setEnd(e.target.value)} />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="form-label">Classrooms</label>
+                            <MultiSelectDropdown
+                                options={allClassrooms.map(c => ({ value: c.Id || c.id, label: c.name || c.Name }))}
+                                selected={classrooms}
+                                onChange={setClassrooms}
+                                placeholder="Select Classroom(s)"
+                                disabled={users.length > 0}
+                            />
+                        </div>
+                        <div>
+                            <label className="form-label">Teachers</label>
+                            <MultiSelectDropdown
+                                options={allUsers.map(u => ({ value: u.id || u.Id, label: u.name || u.Name }))}
+                                selected={users}
+                                onChange={setUsers}
+                                placeholder="Select Teacher(s)"
+                                disabled={classrooms.length > 0}
+                            />
+                        </div>
+                    </div>
+                    <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 10, background: 'var(--sidebar-bg)' }}>
+                        <button className="btn-secondary" onClick={onClose} disabled={loading}>Cancel</button>
+                        <button className="btn btn-primary" onClick={handleSave} disabled={loading} style={{ minWidth: 80 }}>
+                            {loading ? 'Saving...' : 'Save Changes'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </GlobalCanvasPortal>
+    );
+};
 
 const AppointmentsPage = () => {
     const [activeTab, setActiveTab] = useState('calendar');
@@ -16404,6 +16759,19 @@ const AppointmentsPage = () => {
     const [availableSlots, setAvailableSlots] = useState([]);
     const [selectedSlot, setSelectedSlot] = useState(null);
     const [modalLoading, setModalLoading] = useState(false);
+
+    const [showEditSlotModal, setShowEditSlotModal] = useState(false);
+    const [editSlotData, setEditSlotData] = useState(null);
+
+    const handleDeleteSlot = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this open slot?')) return;
+        try {
+            await api.delete(`/api/appointments/admin/slots/${id}`);
+            loadAppointments();
+        } catch (e) {
+            alert('Failed to delete slot. It may have an active reservation.');
+        }
+    };
 
     const pad = n => n.toString().padStart(2, '0');
     const toYMD = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -16435,7 +16803,8 @@ const AppointmentsPage = () => {
             const endDay = new Date(last);
             endDay.setDate(last.getDate() + (6 - last.getDay()));
 
-            const res = await api.get('/api/appointments/user/reservations', {
+            const endpoint = isUserAdmin() ? '/api/appointments/admin/calendar' : '/api/appointments/user/reservations';
+            const res = await api.get(endpoint, {
                 params: { start: toYMD(startDay), end: toYMD(endDay) }
             });
 
@@ -16445,6 +16814,8 @@ const AppointmentsPage = () => {
                     const dt = a.date ? a.date.split('T')[0] : (a.Date ? a.Date.split('T')[0] : null);
                     if (dt) {
                         if (!map[dt]) map[dt] = [];
+                        // Ensure legacy user endpoint reservations have type='reservation'
+                        if (!a.type) a.type = 'reservation';
                         map[dt].push(a);
                     }
                 });
@@ -16567,9 +16938,9 @@ const AppointmentsPage = () => {
                         style={{
                             display: 'flex', alignItems: 'center', gap: 6,
                             padding: '10px 20px', border: 'none', borderBottom: '3px solid',
-                            borderBottomColor: activeTab === tab.key ? 'var(--primary-color)' : 'transparent',
+                            borderBottomColor: activeTab === tab.key ? 'var(--color-primary)' : 'transparent',
                             background: 'transparent',
-                            color: activeTab === tab.key ? 'var(--primary-color)' : 'var(--text-secondary)',
+                            color: activeTab === tab.key ? 'var(--color-primary)' : 'var(--text-secondary)',
                             fontWeight: activeTab === tab.key ? 700 : 500,
                             fontSize: 14, cursor: 'pointer', transition: 'all 0.15s',
                             marginBottom: -2
@@ -16609,8 +16980,13 @@ const AppointmentsPage = () => {
                                         const isOtherMonth = dy.getMonth() !== visibleMonth.getMonth();
                                         const isSelected = selectedKey === key;
                                         const isToday = toYMD(new Date()) === key;
-                                        const hasConfirmed = (appointments[key] || []).some(a => (a.status || a.Status || '').toLowerCase() === 'booked');
-                                        const hasAny = (appointments[key] || []).length > 0;
+
+                                        const dayItems = appointments[key] || [];
+                                        const reservations = dayItems.filter(a => a.type === 'reservation');
+                                        const openSlots = dayItems.filter(a => a.type === 'open_slot' && a.status === 'available');
+
+                                        const hasConfirmed = reservations.some(a => (a.status || a.Status || '').toLowerCase() === 'booked');
+                                        const hasAny = reservations.length > 0 || openSlots.length > 0;
 
                                         return (
                                             <div
@@ -16620,8 +16996,17 @@ const AppointmentsPage = () => {
                                             >
                                                 <div className="calendar-day-number">{dy.getDate()}</div>
                                                 {hasAny && (
-                                                    <div className="calendar-event-dot" style={{ background: hasConfirmed ? '#50AC55' : '#ccc' }}>
-                                                        <span className="calendar-event-dot-title">{appointments[key].length} Appointment{appointments[key].length > 1 ? 's' : ''}</span>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 'auto', width: '100%' }}>
+                                                        {reservations.length > 0 && (
+                                                            <div className="calendar-event-dot" style={{ background: hasConfirmed ? '#50AC55' : '#ccc', padding: '2px 4px', fontSize: 10, borderRadius: 4, color: '#fff', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {reservations.length} Appt{reservations.length > 1 ? 's' : ''}
+                                                            </div>
+                                                        )}
+                                                        {openSlots.length > 0 && (
+                                                            <div className="calendar-event-dot" style={{ background: '#3B82F6', padding: '2px 4px', fontSize: 10, borderRadius: 4, color: '#fff', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {openSlots.length} Open Slot{openSlots.length > 1 ? 's' : ''}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
@@ -16647,59 +17032,105 @@ const AppointmentsPage = () => {
                                     <p className="empty-state-msg">Select a date from the calendar to view its appointments.</p>
                                 )}
 
-                                {!loading && selectedDay && dayAppts.length > 0 && (
-                                    <div className="calendar-day-event-list">
-                                        {dayAppts.map((apt, idx) => {
-                                            const st = (apt.status || apt.Status || '').toLowerCase();
-                                            const isCancelled = st === 'cancelled' || st === 'canceled' || st.includes('canceled');
-                                            const isConfirmed = st === 'booked';
+                                {!loading && selectedDay && dayAppts.length > 0 && (() => {
+                                    const reservations = dayAppts.filter(a => a.type === 'reservation');
+                                    const openSlots = dayAppts.filter(a => a.type === 'open_slot' && a.status === 'available');
 
-                                            const sName = apt.student?.name || apt.studentName || apt.StudentName || '';
-                                            const cName = apt.student?.classroomName || apt.classroomName || apt.ClassroomName || '';
-                                            const tName = apt.teacher?.name || apt.teacherName || apt.TeacherName || '';
-                                            const slotStart = apt.start || apt.slotStart || apt.SlotStart || '';
-                                            const slotEnd = apt.end || apt.slotEnd || apt.SlotEnd || '';
-                                            const meetingLink = '';
+                                    return (
+                                        <div className="calendar-day-event-list">
+                                            {/* Render Reservations */}
+                                            {reservations.map((apt, idx) => {
+                                                const st = (apt.status || apt.Status || '').toLowerCase();
+                                                const isCancelled = st === 'cancelled' || st === 'canceled' || st.includes('canceled');
+                                                const isConfirmed = st === 'booked';
 
-                                            return (
-                                                <div key={apt.id || apt.Id || idx} style={{ padding: 16, border: '1px solid #eee', borderRadius: 8, opacity: isCancelled ? 0.6 : 1, marginBottom: 12 }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                                                        <div>
-                                                            <strong>{sName}</strong>
-                                                            {cName && <span style={{ color: '#666', marginLeft: 8 }}>({cName})</span>}
-                                                            {isUserAdmin() && <div style={{ fontSize: 12, color: '#888' }}>Teacher: {tName}</div>}
+                                                const sName = apt.student?.name || apt.studentName || apt.StudentName || '';
+                                                const cName = apt.student?.classroomName || apt.classroomName || apt.ClassroomName || '';
+                                                const tName = apt.teacher?.name || apt.teacherName || apt.TeacherName || '';
+                                                const slotStart = apt.start || apt.slotStart || apt.SlotStart || '';
+                                                const slotEnd = apt.end || apt.slotEnd || apt.SlotEnd || '';
+                                                const meetingLink = '';
+
+                                                return (
+                                                    <div key={`res-${apt.id || apt.Id || idx}`} style={{ padding: 16, border: '1px solid #eee', borderRadius: 8, opacity: isCancelled ? 0.6 : 1, marginBottom: 12 }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                                            <div>
+                                                                <strong>{sName}</strong>
+                                                                {cName && <span style={{ color: '#666', marginLeft: 8 }}>({cName})</span>}
+                                                                {isUserAdmin() && <div style={{ fontSize: 12, color: '#888' }}>Teacher: {tName}</div>}
+                                                            </div>
+                                                            <div>
+                                                                <span className={'badge ' + (isConfirmed ? 'badge-success' : isCancelled ? 'badge-danger' : 'badge-warning')}>
+                                                                    {apt.status || apt.Status}
+                                                                </span>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <span className={'badge ' + (isConfirmed ? 'badge-success' : isCancelled ? 'badge-danger' : 'badge-warning')}>
-                                                                {apt.status || apt.Status}
-                                                            </span>
+                                                        <div style={{ fontSize: 14, color: '#444', marginBottom: 12 }}>
+                                                            Time: {slotStart} - {slotEnd}
+                                                            {meetingLink && (
+                                                                <span style={{ marginLeft: 8 }}>
+                                                                    &bull; <a href={meetingLink} target="_blank" rel="noreferrer">Join Meeting</a>
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        <div style={{ display: 'flex', gap: 8 }}>
+                                                            {!isConfirmed && !isCancelled && (
+                                                                <button className="btn btn-primary btn-sm" onClick={() => handleAction(apt.id || apt.Id, 'Booked')}>Confirm</button>
+                                                            )}
+                                                            {!isCancelled && (
+                                                                <button className="btn btn-sm" onClick={() => openReschedule(apt)}>Reschedule</button>
+                                                            )}
+                                                            {!isCancelled && (
+                                                                <button className="btn btn-danger btn-sm" onClick={() => handleAction(apt.id || apt.Id, 'Cancelled')}>Cancel</button>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    <div style={{ fontSize: 14, color: '#444', marginBottom: 12 }}>
-                                                        Time: {slotStart} - {slotEnd}
-                                                        {meetingLink && (
-                                                            <span style={{ marginLeft: 8 }}>
-                                                                &bull; <a href={meetingLink} target="_blank" rel="noreferrer">Join Meeting</a>
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                                );
+                                            })}
 
-                                                    <div style={{ display: 'flex', gap: 8 }}>
-                                                        {!isConfirmed && !isCancelled && (
-                                                            <button className="btn btn-primary btn-sm" onClick={() => handleAction(apt.id || apt.Id, 'Booked')}>Confirm</button>
-                                                        )}
-                                                        {!isCancelled && (
-                                                            <button className="btn btn-sm" onClick={() => openReschedule(apt)}>Reschedule</button>
-                                                        )}
-                                                        {!isCancelled && (
-                                                            <button className="btn btn-danger btn-sm" onClick={() => handleAction(apt.id || apt.Id, 'Cancelled')}>Cancel</button>
-                                                        )}
-                                                    </div>
+                                            {/* Render Open Slots */}
+                                            {openSlots.length > 0 && (
+                                                <div style={{ marginTop: 24 }}>
+                                                    <h4 style={{ fontSize: 14, fontWeight: 600, color: '#4b5563', marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 6 }}>Available Open Slots</h4>
+                                                    {openSlots.map(slot => {
+                                                        const slotRestrs = [];
+                                                        if (slot.classrooms?.length) slotRestrs.push(`Classrooms: ${slot.classrooms.map(c => c.name).join(', ')}`);
+                                                        if (slot.users?.length) slotRestrs.push(`Teachers: ${slot.users.map(u => u.name).join(', ')}`);
+                                                        const restrStr = slotRestrs.length ? slotRestrs.join(' | ') : 'All Classrooms & Teachers';
+
+                                                        return (
+                                                            <div key={`slot-${slot.slotId}`} style={{ padding: '12px 16px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 8, marginBottom: 10 }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <div>
+                                                                        <div style={{ fontWeight: 600, color: '#1e293b' }}>
+                                                                            {slot.start} - {slot.end}
+                                                                        </div>
+                                                                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontStyle: restrStr.startsWith('All') ? 'italic' : 'normal' }}>
+                                                                            {restrStr}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', gap: 8 }}>
+                                                                        <button className="btn-secondary" style={{ padding: '4px 8px' }} onClick={() => {
+                                                                            // TODO: Open slot edit modal
+                                                                            setEditSlotData(slot);
+                                                                            setShowEditSlotModal(true);
+                                                                        }}>
+                                                                            <Icon name="edit-2" size={14} />
+                                                                        </button>
+                                                                        <button className="btn btn-danger" style={{ padding: '4px 8px' }} onClick={() => handleDeleteSlot(slot.slotId)}>
+                                                                            <Icon name="trash-2" size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
                     </div>
@@ -16747,10 +17178,10 @@ const AppointmentsPage = () => {
                                                 onClick={() => setSelectedSlot(s.id || s.Id)}
                                                 style={{
                                                     padding: '8px 12px',
-                                                    border: selectedSlot === (s.id || s.Id) ? '2px solid var(--primary-color)' : '1px solid #ccc',
+                                                    border: selectedSlot === (s.id || s.Id) ? '2px solid var(--color-primary)' : '1px solid #ccc',
                                                     borderRadius: 6,
                                                     cursor: 'pointer',
-                                                    background: selectedSlot === (s.id || s.Id) ? 'var(--primary-color)' : '#fff',
+                                                    background: selectedSlot === (s.id || s.Id) ? 'var(--color-primary)' : '#fff',
                                                     color: selectedSlot === (s.id || s.Id) ? '#fff' : '#333'
                                                 }}
                                             >
@@ -16774,6 +17205,21 @@ const AppointmentsPage = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {showEditSlotModal && editSlotData && (
+                <AdminEditSlotModal
+                    slot={editSlotData}
+                    onClose={() => {
+                        setShowEditSlotModal(false);
+                        setEditSlotData(null);
+                    }}
+                    onSaved={() => {
+                        setShowEditSlotModal(false);
+                        setEditSlotData(null);
+                        loadAppointments();
+                    }}
+                />
             )}
         </div>
     );
