@@ -13415,10 +13415,11 @@ const compressImage = (file) => {
     });
 };
 
-const GrapesJsEditor = ({ value, customVariables = [], getEditorHtmlRef, height = '600px' }) => {
+const GrapesJsEditor = ({ value, customVariables = [], getEditorHtmlRef, height = '70vh' }) => {
     const containerRef = useRef(null);
     const editorInstance = useRef(null);
     const initialized = useRef(false);
+    const tributeInstance = useRef(null);
 
     useEffect(() => {
         if (!window.grapesjs || initialized.current) return;
@@ -13430,10 +13431,13 @@ const GrapesJsEditor = ({ value, customVariables = [], getEditorHtmlRef, height 
             width: '100%',
             fromElement: false,
             storageManager: false,
-            plugins: ['gjs-preset-newsletter'],
+            plugins: ['gjs-preset-newsletter', 'gjs-blocks-basic'],
             pluginsOpts: {
                 'gjs-preset-newsletter': {
                     modalTitleImport: 'Import template',
+                },
+                'gjs-blocks-basic': {
+                    flexGrid: true,
                 }
             },
             assetManager: {
@@ -13455,16 +13459,47 @@ const GrapesJsEditor = ({ value, customVariables = [], getEditorHtmlRef, height 
             }
         });
 
+        // Strip unnecessary devices panel
+        editor.on('load', () => {
+            const pn = editor.Panels;
+            pn.removePanel('devices-c');
+
+            // Initialize Tribute.js for # autocomplete
+            if (window.Tribute) {
+                const iframe = editor.Canvas.getFrameEl();
+                const iframeBody = editor.Canvas.getBody();
+
+                tributeInstance.current = new window.Tribute({
+                    values: [
+                        ...TEMPLATE_PLACEHOLDERS.map(p => ({ key: p.label, value: p.id })),
+                        ...customVariables.map(v => ({ key: v, value: `[${v}]` }))
+                    ],
+                    trigger: '#',
+                    selectTemplate: function (item) {
+                        return item.original.value;
+                    },
+                    iframe: iframe,
+                    menuPosition: 'bottom'
+                });
+
+                tributeInstance.current.attach(iframeBody);
+            }
+        });
+
         editorInstance.current = editor;
 
         if (value) {
-            editor.setComponents(value);
+            // Strip any leftover UNLAYER_DESIGN comment if a template was saved using Unlayer briefly
+            let finalValue = value;
+            try {
+                finalValue = value.replace(/<!-- UNLAYER_DESIGN: .*? -->/s, '');
+            } catch (e) { }
+            editor.setComponents(finalValue);
         }
 
         if (getEditorHtmlRef) {
             getEditorHtmlRef.current = () => {
                 if (editor) {
-                    // Extract HTML with inline CSS for email compatibility
                     return editor.runCommand('gjs-get-inlined-html');
                 }
                 return value || '';
@@ -13507,6 +13542,14 @@ const GrapesJsEditor = ({ value, customVariables = [], getEditorHtmlRef, height 
                 attributes: { class: 'gjs-block gjs-one-bg gjs-four-color-h' }
             });
         });
+
+        // Update Tribute collection
+        if (tributeInstance.current) {
+            tributeInstance.current.append(0, [
+                ...TEMPLATE_PLACEHOLDERS.map(p => ({ key: p.label, value: p.id })),
+                ...customVariables.map(v => ({ key: v, value: `[${v}]` }))
+            ], true);
+        }
     }, [customVariables]);
 
     return (
