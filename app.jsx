@@ -9,10 +9,10 @@ const API_BASE = window.AppConfig.host.replace(/\/$/, '');
 
 // JWT helpers
 const Auth = {
-    getToken: () => sessionStorage.getItem('jwt') || '',
-    setToken: (t) => sessionStorage.setItem('jwt', t),
-    clear: () => sessionStorage.removeItem('jwt'),
-    isLoggedIn: () => !!sessionStorage.getItem('jwt'),
+    getToken: () => localStorage.getItem('jwt') || '',
+    setToken: (t) => localStorage.setItem('jwt', t),
+    clear: () => localStorage.removeItem('jwt'),
+    isLoggedIn: () => !!localStorage.getItem('jwt'),
     parseJwt: (token) => {
         try {
             const payload = token.split('.')[1];
@@ -20,7 +20,7 @@ const Auth = {
         } catch { return null; }
     },
     getUser: () => {
-        const t = sessionStorage.getItem('jwt');
+        const t = localStorage.getItem('jwt');
         if (!t) return null;
         const claims = Auth.parseJwt(t);
         if (!claims) return null;
@@ -409,7 +409,7 @@ const getMsalReady = () => {
         const { msClientId } = window.AppConfig;
         _msalInstance = new msal.PublicClientApplication({
             auth: { clientId: msClientId, authority: 'https://login.microsoftonline.com/common', redirectUri: window.location.origin + '/index.html' },
-            cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
+            cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false },
         });
     }
     if (!_msalInitReady) _msalInitReady = _msalInstance.initialize();
@@ -972,6 +972,7 @@ const navItems = [
             { id: '/surveys', label: 'Surveys', icon: 'clipboard' },
             { id: '/email-campaigns', label: 'Email Campaigns', icon: 'mail' },
             { id: '/appointments', label: 'Appointments', icon: 'clock' },
+            { id: '/mass-certificates', label: 'Mass Certificates', icon: 'award' },
         ]
     },
     {
@@ -1041,7 +1042,7 @@ const Sidebar = ({ currentRoute, onNavigate, notifCount, sidebarOpen, onClose, c
     const roleStr = String(user?.role || '').trim().toLowerCase();
     const canSeeSettings = roleStr === 'true' || roleStr === '1' || roleStr === 'yes' || roleStr === 'admin' || roleStr === 'principal';
 
-    const hasBanner = !!sessionStorage.getItem('original_jwt');
+    const hasBanner = !!localStorage.getItem('original_jwt');
     const sidebarStyle = { height: '100%' };
 
     const isQuickButtonHidden = (label) => {
@@ -12058,9 +12059,9 @@ const SettingsPage = () => {
         setSwitchingUser(true);
         try {
             const currentJwt = Auth.getToken();
-            const already = sessionStorage.getItem('original_jwt');
+            const already = localStorage.getItem('original_jwt');
             if (!already && currentJwt) {
-                sessionStorage.setItem('original_jwt', currentJwt);
+                localStorage.setItem('original_jwt', currentJwt);
             }
             const res = await api.post(`/api/auth/loginas/${id}`);
             const newJwt = res.data?.accessToken;
@@ -12070,12 +12071,12 @@ const SettingsPage = () => {
                 window.location.reload();
             } else {
                 alert('Login failed. No token received.');
-                if (!already) sessionStorage.removeItem('original_jwt');
+                if (!already) localStorage.removeItem('original_jwt');
             }
         } catch (err) {
             alert('Network error or unauthorized.');
-            const already = sessionStorage.getItem('original_jwt');
-            if (!already) sessionStorage.removeItem('original_jwt');
+            const already = localStorage.getItem('original_jwt');
+            if (!already) localStorage.removeItem('original_jwt');
         } finally {
             setSwitchingUser(false);
         }
@@ -13419,7 +13420,18 @@ const GrapesJsEditor = ({ value, customVariables = [], getEditorHtmlRef, height 
     const containerRef = useRef(null);
     const editorInstance = useRef(null);
     const initialized = useRef(false);
-    const tributeInstance = useRef(null);
+    const autocompleteState = useRef(null);
+    const variablesRef = useRef([]);
+
+    // Keep variables ref in sync
+    // customVariables is now [{varname: 'X'}] format; extract varname
+    useEffect(() => {
+        const cvNames = customVariables.map(v => typeof v === 'string' ? v : v.varname);
+        variablesRef.current = [
+            ...TEMPLATE_PLACEHOLDERS.map(p => ({ key: p.label, value: p.id, description: p.description })),
+            ...cvNames.map(v => ({ key: v, value: `[${v}]`, description: 'Custom variable' }))
+        ];
+    }, [customVariables]);
 
     useEffect(() => {
         if (!window.grapesjs || initialized.current) return;
@@ -13431,6 +13443,9 @@ const GrapesJsEditor = ({ value, customVariables = [], getEditorHtmlRef, height 
             width: '100%',
             fromElement: false,
             storageManager: false,
+            canvas: {
+                styles: []
+            },
             plugins: ['gjs-preset-newsletter', 'gjs-blocks-basic'],
             pluginsOpts: {
                 'gjs-preset-newsletter': {
@@ -13459,48 +13474,480 @@ const GrapesJsEditor = ({ value, customVariables = [], getEditorHtmlRef, height 
             }
         });
 
+        // ── Custom # autocomplete inside GrapesJS iframe ──
+        // All known variable patterns for atomic backspace detection
+        const getAllVarPatterns = () => {
+            return variablesRef.current.map(v => v.value);
+        };
+
+        const createAutocompleteMenu = (iframeDoc) => {
+            let menu = iframeDoc.getElementById('gjs-var-autocomplete');
+            if (menu) return menu;
+
+            menu = iframeDoc.createElement('div');
+            menu.id = 'gjs-var-autocomplete';
+            menu.setAttribute('contenteditable', 'false');
+            Object.assign(menu.style, {
+                position: 'absolute',
+                zIndex: '999999',
+                background: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: '8px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+                maxHeight: '220px',
+                overflowY: 'auto',
+                display: 'none',
+                minWidth: '220px',
+                maxWidth: '320px',
+                padding: '4px',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                fontSize: '13px',
+                backdropFilter: 'blur(12px)',
+            });
+
+            // Custom scrollbar styles
+            const style = iframeDoc.createElement('style');
+            style.textContent = `
+                #gjs-var-autocomplete::-webkit-scrollbar { width: 5px; }
+                #gjs-var-autocomplete::-webkit-scrollbar-track { background: transparent; }
+                #gjs-var-autocomplete::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+                #gjs-var-autocomplete .gjs-var-item {
+                    padding: 7px 12px;
+                    cursor: pointer;
+                    border-radius: 5px;
+                    color: #e2e8f0;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    transition: background 0.1s;
+                    user-select: none;
+                }
+                #gjs-var-autocomplete .gjs-var-item:hover,
+                #gjs-var-autocomplete .gjs-var-item.active {
+                    background: #3b82f6;
+                    color: #fff;
+                }
+                #gjs-var-autocomplete .gjs-var-item .var-hash {
+                    color: #60a5fa;
+                    font-weight: 700;
+                    font-size: 14px;
+                    flex-shrink: 0;
+                }
+                #gjs-var-autocomplete .gjs-var-item.active .var-hash,
+                #gjs-var-autocomplete .gjs-var-item:hover .var-hash {
+                    color: #bfdbfe;
+                }
+                #gjs-var-autocomplete .gjs-var-item .var-name {
+                    font-weight: 600;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+            `;
+            iframeDoc.head.appendChild(style);
+            iframeDoc.body.appendChild(menu);
+            return menu;
+        };
+
+        const getCaretCoords = (iframeDoc, iframeWin) => {
+            const sel = iframeWin.getSelection();
+            if (!sel || sel.rangeCount === 0) return null;
+            const range = sel.getRangeAt(0).cloneRange();
+            range.collapse(true);
+            // Try getClientRects first (works when cursor is inside text)
+            const rects = range.getClientRects();
+            if (rects.length > 0) {
+                return { x: rects[0].left, y: rects[0].bottom + 4 };
+            }
+            // Fallback: getBoundingClientRect (may return 0,0 for collapsed range)
+            const rect = range.getBoundingClientRect();
+            if (rect.width !== 0 || rect.height !== 0) {
+                return { x: rect.left, y: rect.bottom + 4 };
+            }
+            // Last resort: use parent element's position
+            const parent = range.startContainer.nodeType === 3 ? range.startContainer.parentElement : range.startContainer;
+            if (parent) {
+                const parentRect = parent.getBoundingClientRect();
+                return { x: parentRect.left, y: parentRect.bottom + 4 };
+            }
+            return null;
+        };
+
+        const showMenu = (iframeDoc, iframeWin, filter) => {
+            const menu = createAutocompleteMenu(iframeDoc);
+            const items = variablesRef.current.filter(v =>
+                v.key.toLowerCase().includes((filter || '').toLowerCase())
+            );
+
+            if (items.length === 0) {
+                menu.style.display = 'none';
+                return;
+            }
+
+            menu.innerHTML = '';
+            items.forEach((item, idx) => {
+                const div = iframeDoc.createElement('div');
+                div.className = 'gjs-var-item' + (idx === 0 ? ' active' : '');
+                div.dataset.index = idx;
+                // Show the actual token format that will be inserted
+                const isCustom = item.value.startsWith('[');
+                const displayPrefix = isCustom ? '' : '#';
+                div.innerHTML = `<span class="var-hash">${isCustom ? '[ ]' : '#'}</span><span class="var-name">${item.key}</span>`;
+                div.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    selectItem(iframeDoc, iframeWin, item);
+                });
+                div.addEventListener('mouseenter', () => {
+                    menu.querySelectorAll('.gjs-var-item').forEach(el => el.classList.remove('active'));
+                    div.classList.add('active');
+                    if (autocompleteState.current) autocompleteState.current.activeIndex = idx;
+                });
+                menu.appendChild(div);
+            });
+
+            const coords = getCaretCoords(iframeDoc, iframeWin);
+            if (coords) {
+                // Account for scroll position
+                const scrollX = iframeWin.pageXOffset || iframeDoc.documentElement.scrollLeft;
+                const scrollY = iframeWin.pageYOffset || iframeDoc.documentElement.scrollTop;
+                menu.style.left = (coords.x + scrollX) + 'px';
+                menu.style.top = (coords.y + scrollY) + 'px';
+            }
+            menu.style.display = 'block';
+
+            if (autocompleteState.current) {
+                autocompleteState.current.activeIndex = 0;
+                autocompleteState.current.filteredItems = items;
+            }
+        };
+
+        const hideMenu = (iframeDoc) => {
+            const menu = iframeDoc?.getElementById('gjs-var-autocomplete');
+            if (menu) menu.style.display = 'none';
+            autocompleteState.current = null;
+        };
+
+        const selectItem = (iframeDoc, iframeWin, item) => {
+            const state = autocompleteState.current;
+            if (!state) return;
+
+            const sel = iframeWin.getSelection();
+            if (!sel || sel.rangeCount === 0) return;
+
+            // Delete from the # trigger to current cursor
+            const range = sel.getRangeAt(0);
+            const textNode = state.triggerNode;
+            const triggerOffset = state.triggerOffset;
+
+            if (textNode && textNode.parentNode) {
+                const deleteRange = iframeDoc.createRange();
+                deleteRange.setStart(textNode, triggerOffset);
+                deleteRange.setEnd(range.startContainer, range.startOffset);
+                deleteRange.deleteContents();
+
+                // Insert plain text value (e.g. "#FullName" or "[CustomVar]")
+                const insertText = iframeDoc.createTextNode(item.value);
+                deleteRange.insertNode(insertText);
+
+                // Move cursor right after the inserted text
+                const newRange = iframeDoc.createRange();
+                newRange.setStartAfter(insertText);
+                newRange.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(newRange);
+            }
+
+            hideMenu(iframeDoc);
+        };
+
+        const handleKeyDown = (e, iframeDoc, iframeWin) => {
+            const state = autocompleteState.current;
+            if (!state) return;
+
+            const menu = iframeDoc.getElementById('gjs-var-autocomplete');
+            if (!menu || menu.style.display === 'none') return;
+
+            const items = state.filteredItems || [];
+            if (items.length === 0) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                state.activeIndex = (state.activeIndex + 1) % items.length;
+                menu.querySelectorAll('.gjs-var-item').forEach((el, i) => {
+                    el.classList.toggle('active', i === state.activeIndex);
+                    if (i === state.activeIndex) el.scrollIntoView({ block: 'nearest' });
+                });
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                state.activeIndex = (state.activeIndex - 1 + items.length) % items.length;
+                menu.querySelectorAll('.gjs-var-item').forEach((el, i) => {
+                    el.classList.toggle('active', i === state.activeIndex);
+                    if (i === state.activeIndex) el.scrollIntoView({ block: 'nearest' });
+                });
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                e.stopPropagation();
+                const selected = items[state.activeIndex];
+                if (selected) selectItem(iframeDoc, iframeWin, selected);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                hideMenu(iframeDoc);
+            }
+        };
+
+        const handleInput = (e, iframeDoc, iframeWin) => {
+            const sel = iframeWin.getSelection();
+            if (!sel || sel.rangeCount === 0) {
+                hideMenu(iframeDoc);
+                return;
+            }
+
+            const range = sel.getRangeAt(0);
+            const node = range.startContainer;
+            if (node.nodeType !== 3) {
+                hideMenu(iframeDoc);
+                return;
+            }
+
+            const text = node.textContent;
+            const offset = range.startOffset;
+            // Find the last # before the cursor
+            const beforeCursor = text.substring(0, offset);
+            const hashIdx = beforeCursor.lastIndexOf('#');
+
+            if (hashIdx === -1) {
+                hideMenu(iframeDoc);
+                return;
+            }
+
+            // Ensure no space between # and cursor (only continuous word chars)
+            const typed = beforeCursor.substring(hashIdx + 1);
+            if (/\s/.test(typed)) {
+                hideMenu(iframeDoc);
+                return;
+            }
+
+            // Start or update autocomplete
+            autocompleteState.current = autocompleteState.current || {};
+            autocompleteState.current.triggerNode = node;
+            autocompleteState.current.triggerOffset = hashIdx;
+            autocompleteState.current.activeIndex = autocompleteState.current.activeIndex || 0;
+
+            showMenu(iframeDoc, iframeWin, typed);
+        };
+
+        // Handle backspace to delete whole variable tokens (#VarName or [VarName])
+        const handleKeyDownGlobal = (e, iframeDoc, iframeWin) => {
+            // First handle autocomplete navigation
+            if (autocompleteState.current) {
+                handleKeyDown(e, iframeDoc, iframeWin);
+                if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) return;
+            }
+
+            // Handle backspace/delete for variable tokens in plain text
+            if (e.key === 'Backspace') {
+                const sel = iframeWin.getSelection();
+                if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+                const range = sel.getRangeAt(0);
+                const node = range.startContainer;
+                if (node.nodeType !== 3) return;
+
+                const text = node.textContent;
+                const offset = range.startOffset;
+                const beforeCursor = text.substring(0, offset);
+
+                // Check if cursor is right after a #VarName token
+                const hashMatch = beforeCursor.match(/(#[a-zA-Z][a-zA-Z0-9_]*)$/);
+                if (hashMatch) {
+                    const token = hashMatch[1];
+                    // Verify this is a known variable
+                    const patterns = getAllVarPatterns();
+                    if (patterns.includes(token)) {
+                        e.preventDefault();
+                        const tokenStart = offset - token.length;
+                        node.textContent = text.substring(0, tokenStart) + text.substring(offset);
+                        // Reposition cursor
+                        const newRange = iframeDoc.createRange();
+                        newRange.setStart(node, tokenStart);
+                        newRange.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(newRange);
+                        return;
+                    }
+                }
+
+                // Check if cursor is right after a [VarName] token
+                const bracketMatch = beforeCursor.match(/(\[[a-zA-Z][a-zA-Z0-9_]*\])$/);
+                if (bracketMatch) {
+                    const token = bracketMatch[1];
+                    const patterns = getAllVarPatterns();
+                    if (patterns.includes(token)) {
+                        e.preventDefault();
+                        const tokenStart = offset - token.length;
+                        node.textContent = text.substring(0, tokenStart) + text.substring(offset);
+                        const newRange = iframeDoc.createRange();
+                        newRange.setStart(node, tokenStart);
+                        newRange.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(newRange);
+                        return;
+                    }
+                }
+            }
+
+            if (e.key === 'Delete') {
+                const sel = iframeWin.getSelection();
+                if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+                const range = sel.getRangeAt(0);
+                const node = range.startContainer;
+                if (node.nodeType !== 3) return;
+
+                const text = node.textContent;
+                const offset = range.startOffset;
+                const afterCursor = text.substring(offset);
+
+                // Check if cursor is right before a #VarName token
+                const hashMatch = afterCursor.match(/^(#[a-zA-Z][a-zA-Z0-9_]*)/);
+                if (hashMatch) {
+                    const token = hashMatch[1];
+                    const patterns = getAllVarPatterns();
+                    if (patterns.includes(token)) {
+                        e.preventDefault();
+                        node.textContent = text.substring(0, offset) + text.substring(offset + token.length);
+                        const newRange = iframeDoc.createRange();
+                        newRange.setStart(node, offset);
+                        newRange.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(newRange);
+                        return;
+                    }
+                }
+
+                // Check if cursor is right before a [VarName] token
+                const bracketMatch = afterCursor.match(/^(\[[a-zA-Z][a-zA-Z0-9_]*\])/);
+                if (bracketMatch) {
+                    const token = bracketMatch[1];
+                    const patterns = getAllVarPatterns();
+                    if (patterns.includes(token)) {
+                        e.preventDefault();
+                        node.textContent = text.substring(0, offset) + text.substring(offset + token.length);
+                        const newRange = iframeDoc.createRange();
+                        newRange.setStart(node, offset);
+                        newRange.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(newRange);
+                        return;
+                    }
+                }
+            }
+        };
+
         // Strip unnecessary devices panel
         editor.on('load', () => {
             const pn = editor.Panels;
             pn.removePanel('devices-c');
+        });
 
-            // Initialize Tribute.js for # autocomplete
-            if (window.Tribute) {
-                const iframe = editor.Canvas.getFrameEl();
-                const iframeBody = editor.Canvas.getBody();
+        // Attach input/keydown listeners when RTE is enabled
+        editor.on('rte:enable', () => {
+            // Clean up any existing listeners first to prevent stacking
+            if (editor.__varAutoCleanup) {
+                editor.__varAutoCleanup();
+                editor.__varAutoCleanup = null;
+            }
 
-                tributeInstance.current = new window.Tribute({
-                    values: [
-                        ...TEMPLATE_PLACEHOLDERS.map(p => ({ key: p.label, value: p.id })),
-                        ...customVariables.map(v => ({ key: v, value: `[${v}]` }))
-                    ],
-                    trigger: '#',
-                    selectTemplate: function (item) {
-                        return item.original.value;
-                    },
-                    iframe: iframe,
-                    menuPosition: 'bottom'
+            const iframeEl = editor.Canvas.getFrameEl();
+            const iframeWin = iframeEl?.contentWindow;
+            const iframeDoc = iframeEl?.contentDocument || iframeWin?.document;
+            if (!iframeDoc || !iframeWin) return;
+
+            // Defer input handling so it runs AFTER the browser finishes default processing
+            let inputRafId = null;
+            const onInput = () => {
+                if (inputRafId) cancelAnimationFrame(inputRafId);
+                inputRafId = requestAnimationFrame(() => {
+                    handleInput(null, iframeDoc, iframeWin);
                 });
+            };
 
-                tributeInstance.current.attach(iframeBody);
+            // Only keydown needs capture phase (to intercept Enter/Tab for autocomplete)
+            const onKeyDown = (e) => handleKeyDownGlobal(e, iframeDoc, iframeWin);
+
+            const onMouseDown = (e) => {
+                const menu = iframeDoc.getElementById('gjs-var-autocomplete');
+                if (menu && menu.style.display !== 'none' && !menu.contains(e.target)) {
+                    hideMenu(iframeDoc);
+                }
+            };
+
+            // input and mousedown use bubble phase (false) to not interfere with GrapesJS
+            iframeDoc.addEventListener('input', onInput, false);
+            iframeDoc.addEventListener('mousedown', onMouseDown, false);
+            // keydown uses capture only for autocomplete interception
+            iframeDoc.addEventListener('keydown', onKeyDown, true);
+
+            editor.__varAutoCleanup = () => {
+                if (inputRafId) cancelAnimationFrame(inputRafId);
+                iframeDoc.removeEventListener('input', onInput, false);
+                iframeDoc.removeEventListener('mousedown', onMouseDown, false);
+                iframeDoc.removeEventListener('keydown', onKeyDown, true);
+                hideMenu(iframeDoc);
+            };
+        });
+
+        editor.on('rte:disable', () => {
+            if (editor.__varAutoCleanup) {
+                editor.__varAutoCleanup();
+                editor.__varAutoCleanup = null;
             }
         });
 
         editorInstance.current = editor;
 
         if (value) {
-            // Strip any leftover UNLAYER_DESIGN comment if a template was saved using Unlayer briefly
-            let finalValue = value;
-            try {
-                finalValue = value.replace(/<!-- UNLAYER_DESIGN: .*? -->/s, '');
-            } catch (e) { }
-            editor.setComponents(finalValue);
+            // Strip any leftover UNLAYER_DESIGN comment
+            let finalValue = value.replace(/<!-- UNLAYER_DESIGN: .*? -->/s, '');
+
+            if (finalValue.includes('<html') || finalValue.includes('<body')) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(finalValue, 'text/html');
+
+                // Extract body content and styles
+                const bodyContent = doc.body.innerHTML;
+                const styles = Array.from(doc.querySelectorAll('style')).map(s => s.innerHTML).join('\n');
+
+                editor.setComponents(bodyContent);
+                if (styles) {
+                    editor.setStyle(styles);
+                }
+            } else {
+                editor.setComponents(finalValue);
+            }
         }
 
         if (getEditorHtmlRef) {
-            getEditorHtmlRef.current = () => {
+            getEditorHtmlRef.current = async () => {
                 if (editor) {
-                    return editor.runCommand('gjs-get-inlined-html');
+                    let result = '';
+                    try {
+                        const inlined = await editor.runCommand('gjs-get-inlined-html');
+                        if (inlined && typeof inlined === 'string') {
+                            result = inlined;
+                        }
+                    } catch (e) {
+                        console.error('Inlining failed:', e);
+                    }
+                    if (!result) {
+                        // Fallback if juice/inlining fails or command is not found
+                        const html = editor.getHtml();
+                        const css = editor.getCss();
+                        result = `<style>${css}</style>\n${html}`;
+                    }
+                    // Safety: strip any leftover gjs-var-tag spans back to plain text
+                    result = result.replace(/<span[^>]*class="gjs-var-tag"[^>]*data-gjs-var="([^"]*)"[^>]*>[^<]*<\/span>/gi, '$1');
+                    result = result.replace(/<span[^>]*data-gjs-var="([^"]*)"[^>]*class="gjs-var-tag"[^>]*>[^<]*<\/span>/gi, '$1');
+                    return result;
                 }
                 return value || '';
             };
@@ -13522,34 +13969,6 @@ const GrapesJsEditor = ({ value, customVariables = [], getEditorHtmlRef, height 
         const blocks = editor.BlockManager.getAll();
         const varsBlocks = blocks.filter(b => b.get('category').id === 'Variables' || b.get('category').label === 'Variables');
         varsBlocks.forEach(b => editor.BlockManager.remove(b.get('id')));
-
-        // Add standard placeholders
-        TEMPLATE_PLACEHOLDERS.forEach(p => {
-            editor.BlockManager.add(`var-${p.id}`, {
-                label: `Var: ${p.label}`,
-                content: p.id,
-                category: 'Variables',
-                attributes: { class: 'gjs-block gjs-one-bg gjs-four-color-h' }
-            });
-        });
-
-        // Add custom variables
-        customVariables.forEach(v => {
-            editor.BlockManager.add(`var-custom-${v}`, {
-                label: `Custom: ${v}`,
-                content: `[${v}]`,
-                category: 'Variables',
-                attributes: { class: 'gjs-block gjs-one-bg gjs-four-color-h' }
-            });
-        });
-
-        // Update Tribute collection
-        if (tributeInstance.current) {
-            tributeInstance.current.append(0, [
-                ...TEMPLATE_PLACEHOLDERS.map(p => ({ key: p.label, value: p.id })),
-                ...customVariables.map(v => ({ key: v, value: `[${v}]` }))
-            ], true);
-        }
     }, [customVariables]);
 
     return (
@@ -13600,7 +14019,13 @@ const TemplateEditorPage = ({ templateId, onBack }) => {
                 try {
                     if (d.customvar) {
                         const parsed = JSON.parse(d.customvar);
-                        if (Array.isArray(parsed)) setCustomVariables(parsed);
+                        if (Array.isArray(parsed)) {
+                            // Normalize: support old ["str"] format and new [{varname}] format
+                            const normalized = parsed.map(item =>
+                                typeof item === 'string' ? { varname: item } : item
+                            );
+                            setCustomVariables(normalized);
+                        }
                     }
                 } catch (e) { }
             })
@@ -13618,16 +14043,16 @@ const TemplateEditorPage = ({ templateId, onBack }) => {
             alert('Cannot use a reserved placeholder name.');
             return;
         }
-        if (customVariables.includes(v)) {
+        if (customVariables.some(cv => cv.varname === v)) {
             alert('Variable already exists.');
             return;
         }
-        setCustomVariables([...customVariables, v]);
+        setCustomVariables([...customVariables, { varname: v }]);
         setNewVarName('');
     };
 
-    const removeCustomVariable = (v) => {
-        setCustomVariables(customVariables.filter(x => x !== v));
+    const removeCustomVariable = (varname) => {
+        setCustomVariables(customVariables.filter(x => x.varname !== varname));
     };
 
     const handleSave = async () => {
@@ -13635,7 +14060,7 @@ const TemplateEditorPage = ({ templateId, onBack }) => {
 
         let finalContent = content;
         if (getEditorHtmlRef.current) {
-            finalContent = getEditorHtmlRef.current();
+            finalContent = await getEditorHtmlRef.current();
         }
 
         setSaving(true);
@@ -13708,9 +14133,9 @@ const TemplateEditorPage = ({ templateId, onBack }) => {
                 <h3 style={{ marginTop: 0, fontSize: '1rem', marginBottom: 16 }}>Custom Variables</h3>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     {customVariables.map(v => (
-                        <div key={v} className="badge badge-primary" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px' }}>
-                            <span>[{v}]</span>
-                            <Icon name="x" size={14} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => removeCustomVariable(v)} />
+                        <div key={v.varname} className="badge badge-primary" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px' }}>
+                            <span>[{v.varname}]</span>
+                            <Icon name="x" size={14} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => removeCustomVariable(v.varname)} />
                         </div>
                     ))}
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: customVariables.length > 0 ? 8 : 0 }}>
@@ -13727,7 +14152,7 @@ const TemplateEditorPage = ({ templateId, onBack }) => {
                     </div>
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 8 }}>
-                    These variables will be available as draggable blocks in the editor's "Variables" category.
+                    Type <strong style={{ color: 'var(--color-primary)' }}>#</strong> inside any text block in the editor to select from these variables.
                 </div>
             </div>
 
@@ -13906,6 +14331,7 @@ const pageTitles = {
     '/payments': 'Payments Log',
     '/mass-invoices': 'Issue Invoices',
     '/email-campaigns': 'Email Campaigns',
+    '/mass-certificates': 'Mass Certificates',
     '/appointments': 'Appointments',
     '/send-reminders': 'Invoice Reminders',
     '/profile': 'My Profile',
@@ -14018,6 +14444,7 @@ const DashboardLayout = ({ onLogout }) => {
         case '/payments': PageComponent = isUserAdmin() ? <PaymentsLogPage /> : <HomePage />; break;
         case '/mass-invoices': PageComponent = isUserAdmin() ? <MassInvoicesPage /> : <HomePage />; break;
         case '/email-campaigns': PageComponent = isUserAdmin() ? <EmailCampaignPage /> : <HomePage />; break;
+        case '/mass-certificates': PageComponent = isUserAdmin() ? <MassCertificatesPage /> : <HomePage />; break;
         case '/appointments': PageComponent = isUserAdmin() ? <AppointmentsPage /> : <HomePage />; break;
         case '/send-reminders': PageComponent = isUserAdmin() ? <SendRemindersPage /> : <HomePage />; break;
         case '/profile': PageComponent = <ProfilePage onLogout={onLogout} />; break;
@@ -14026,12 +14453,12 @@ const DashboardLayout = ({ onLogout }) => {
         default: PageComponent = <HomePage />;
     }
 
-    const originalJwt = sessionStorage.getItem('original_jwt');
+    const originalJwt = localStorage.getItem('original_jwt');
 
     const handleReturnToProfile = () => {
         if (!originalJwt) return;
         Auth.setToken(originalJwt);
-        sessionStorage.removeItem('original_jwt');
+        localStorage.removeItem('original_jwt');
         window.location.hash = '';
         window.location.reload();
     };
@@ -14127,6 +14554,370 @@ const DashboardLayout = ({ onLogout }) => {
 // ═══════════════════════════════════════════
 //  EMAIL CAMPAIGN PAGE
 // ═══════════════════════════════════════════
+
+// ═══════════════════════════════════════════
+//  MASS CERTIFICATES PAGE
+// ═══════════════════════════════════════════
+
+const MassCertificatesPage = () => {
+    const [step, setStep] = useState(0);
+    const [jobsList, setJobsList] = useState([]);
+    const [loadingList, setLoadingList] = useState(false);
+
+    useEffect(() => {
+        if (step === 0) {
+            setLoadingList(true);
+            api.get('/api/certificates/mass')
+                .then(res => setJobsList(res.data?.data || res.data || []))
+                .catch(err => alert('Failed to load mass certificates history'))
+                .finally(() => setLoadingList(false));
+        }
+    }, [step]);
+
+    // Step 1: Template & Year
+    const [templates, setTemplates] = useState([]);
+    const [templateId, setTemplateId] = useState('');
+    const [year, setYear] = useState(new Date().getFullYear());
+    const [categories, setCategories] = useState([]);
+
+    useEffect(() => {
+        api.get('/api/templates', { params: { filter: "type==certificate", col: 'id,name,content,customvar' } })
+            .then(res => setTemplates(res.data?.data || res.data || []));
+        api.get('/api/options', { params: { t: 'qComCategories' } })
+            .then(res => {
+                const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+                setCategories(list.map(o => (o.Value || o.value || '').toString().trim()).filter(Boolean));
+            });
+    }, []);
+
+    const selectedTemplate = useMemo(() => templates.find(t => String(t.Id || t.id) === String(templateId)), [templates, templateId]);
+    const isCompetition = selectedTemplate?.name === 'Competition Certificates';
+
+    // Step 2: Students & Competition Records
+    const [students, setStudents] = useState([]);
+    const [loadingStudents, setLoadingStudents] = useState(false);
+    const [selectedStudents, setSelectedStudents] = useState(new Set());
+
+    useEffect(() => {
+        if (step === 2 && isCompetition) {
+            setLoadingStudents(true);
+            // We fetch the students with their competition records for the given year
+            api.get('/api/competition/records', { params: { year, limit: 1000 } })
+                .then(res => {
+                    const data = res.data?.data || res.data || [];
+                    setStudents(data);
+                    // Select all by default that have a record
+                    const withRecord = new Set(data.filter(s => s.id).map(s => s.student));
+                    setSelectedStudents(withRecord);
+                })
+                .catch(err => alert('Failed to load competition records'))
+                .finally(() => setLoadingStudents(false));
+        }
+    }, [step, isCompetition, year]);
+
+    const handleUpdateCompRecord = async (compId, field, value) => {
+        try {
+            await api.patch(`/api/competition/${compId}`, { [field]: value });
+            setStudents(prev => prev.map(s => String(s.id) === String(compId) ? { ...s, [field]: value } : s));
+        } catch (err) {
+            alert('Failed to update competition record');
+        }
+    };
+
+    const toggleStudent = (id, hasRecord) => {
+        if (!hasRecord) return;
+        const next = new Set(selectedStudents);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        setSelectedStudents(next);
+    };
+
+    // Step 3: Custom Variables
+    const customVars = useMemo(() => {
+        if (!selectedTemplate || !selectedTemplate.customvar) return [];
+        try { 
+            let vars = JSON.parse(selectedTemplate.customvar); 
+            return vars.map(v => typeof v === 'string' ? { varname: v } : v); 
+        } catch (e) { return []; }
+    }, [selectedTemplate]);
+
+    const [customVarValues, setCustomVarValues] = useState({});
+
+    // Step 4: Progress
+    const [jobId, setJobId] = useState(null);
+    const [jobStatus, setJobStatus] = useState(null);
+    const [polling, setPolling] = useState(false);
+    const pollInterval = useRef(null);
+
+    const startJob = async () => {
+        if (!window.confirm("Are you sure you want to generate these certificates?")) return;
+        
+        for (const v of customVars) {
+            if (!customVarValues[v.varname]) return alert(`Please enter a value for ${v.varname}`);
+        }
+
+        try {
+            const payload = {
+                templateId,
+                year: isCompetition ? year : null,
+                students: Array.from(selectedStudents),
+                customVariables: customVarValues
+            };
+
+            const res = await api.post('/api/certificates/mass', payload);
+            setJobId(res.data.jobId);
+            setStep(4);
+            setPolling(true);
+        } catch (err) {
+            alert('Failed to start job: ' + (err.response?.data?.message || err.message));
+        }
+    };
+
+    useEffect(() => {
+        if (polling && jobId) {
+            const check = async () => {
+                try {
+                    const res = await api.get(`/api/certificates/mass/${jobId}/status`);
+                    setJobStatus(res.data);
+                    if (['COMPLETED', 'FAILED', 'COMPLETED_WITH_ERRORS'].includes(res.data.status)) {
+                        setPolling(false);
+                        clearInterval(pollInterval.current);
+                    }
+                } catch { }
+            };
+            check();
+            pollInterval.current = setInterval(check, 3000);
+            return () => clearInterval(pollInterval.current);
+        }
+    }, [polling, jobId]);
+
+    return (
+        <div style={{ padding: 24, maxWidth: 1000, margin: '0 auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                <h2 style={{ margin: 0 }}>Mass Certificates Generation</h2>
+                {step > 0 && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 1 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 1 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>1</div>
+                        <div style={{ width: 32, height: 2, background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 2 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 2 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>2</div>
+                        <div style={{ width: 32, height: 2, background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 3 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 3 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>3</div>
+                        <div style={{ width: 32, height: 2, background: step >= 4 ? 'var(--color-primary)' : '#e2e8f0', alignSelf: 'center' }} />
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: step >= 4 ? 'var(--color-primary)' : '#e2e8f0', color: step >= 4 ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>4</div>
+                    </div>
+                )}
+                {step === 0 && (
+                    <button className="btn btn-primary" onClick={() => setStep(1)}>
+                        <Icon name="add" size={16} style={{ marginRight: 8 }} /> Create New Certificates Batch
+                    </button>
+                )}
+            </div>
+
+            {step === 0 && (
+                <div className="card" style={{ padding: 24 }}>
+                    {loadingList ? <div style={{ textAlign: 'center', padding: 24 }}>Loading...</div> : (
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Template</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                    <th>Download</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {jobsList.map(c => {
+                                    const created_at = c.created_at || c.createdAt || c.Timestamp;
+                                    const status = c.status || c.Status || 'UNKNOWN';
+                                    const completed_count = c.completed_count || c.completedCount || c.CompletedCount || 0;
+                                    const total_count = c.total_count || c.totalCount || c.TotalCount || 0;
+                                    const failed_count = c.failed_count || c.failedCount || c.FailedCount || 0;
+                                    const downloadUrl = c.downloadUrl || c.DownloadUrl;
+                                    return (
+                                        <tr key={c.id || c.RowKey}>
+                                            <td>{created_at ? new Date(created_at).toLocaleString() : 'N/A'}</td>
+                                            <td>{c.templateName || c.TemplateName || 'Unknown Template'}</td>
+                                            <td>
+                                                <span className={`badge ${status === 'COMPLETED' ? 'badge-success' : status === 'FAILED' ? 'badge-danger' : 'badge-warning'}`}>
+                                                    {status}
+                                                </span>
+                                            </td>
+                                            <td>{completed_count} / {total_count} {failed_count > 0 && <span style={{ color: 'var(--color-danger)' }}>({failed_count} failed)</span>}</td>
+                                            <td>
+                                                {downloadUrl && (
+                                                    <a href={downloadUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }}>
+                                                        <Icon name="download" size={14} style={{ marginRight: 4 }} /> Download
+                                                    </a>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {jobsList.length === 0 && (
+                                    <tr><td colSpan="5" style={{ textAlign: 'center', padding: 24 }}>No previous certificates jobs</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            )}
+
+            {step === 1 && (
+                <div className="card" style={{ padding: 24 }}>
+                    <h3 style={{ margin: '0 0 16px 0', fontWeight: 700 }}>Select Template</h3>
+                    
+                    <label className="form-label">Certificate Template</label>
+                    <select className="form-input" value={templateId} onChange={e => setTemplateId(e.target.value)} style={{ marginBottom: 20 }}>
+                        <option value="">-- Select Template --</option>
+                        {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+
+                    {isCompetition && (
+                        <div style={{ background: 'var(--color-bg)', padding: 16, borderRadius: 8, border: '1px solid var(--color-border)', marginBottom: 20 }}>
+                            <label className="form-label">Competition Year</label>
+                            <input type="number" className="form-input" value={year} onChange={e => setYear(e.target.value)} min="2000" max="2100" />
+                            <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                                Selecting this template will dynamically load students with their competition records for the selected year.
+                            </p>
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+                        <button className="btn btn-secondary" onClick={() => setStep(0)}>Cancel</button>
+                        <button className="btn btn-primary" disabled={!templateId || (isCompetition && !year)} onClick={() => setStep(2)}>Next Step</button>
+                    </div>
+                </div>
+            )}
+
+            {step === 2 && (
+                <div className="card" style={{ padding: 24 }}>
+                    <h3 style={{ margin: '0 0 16px 0', fontWeight: 700 }}>Select Students</h3>
+                    {isCompetition ? (
+                        <>
+                            {loadingStudents ? <div style={{ textAlign: 'center', padding: 24 }}>Loading Competition Records...</div> : (
+                                <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                                    <table className="data-table">
+                                        <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+                                            <tr>
+                                                <th style={{ width: 40 }}>
+                                                    <input type="checkbox" 
+                                                        checked={selectedStudents.size > 0 && selectedStudents.size === students.filter(s => s.id).length} 
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setSelectedStudents(new Set(students.filter(s => s.id).map(s => s.student)));
+                                                            } else {
+                                                                setSelectedStudents(new Set());
+                                                            }
+                                                        }} 
+                                                    />
+                                                </th>
+                                                <th>Student</th>
+                                                <th>Classroom</th>
+                                                <th>Competition Record</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {students.map(s => {
+                                                const hasRecord = !!s.id;
+                                                const isSelected = selectedStudents.has(s.student);
+                                                return (
+                                                    <tr key={s.student} style={{ opacity: hasRecord ? 1 : 0.6, background: isSelected ? 'var(--color-primary-light)' : 'transparent' }}>
+                                                        <td>
+                                                            <input type="checkbox" disabled={!hasRecord} checked={isSelected} onChange={() => toggleStudent(s.student, hasRecord)} />
+                                                        </td>
+                                                        <td>{s.studentFullName}</td>
+                                                        <td>{s.classroomName}</td>
+                                                        <td>
+                                                            {!hasRecord ? <span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>[Did not Register]</span> : (
+                                                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                                    <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Rank:</label>
+                                                                    <input type="number" className="form-input" style={{ width: 70, padding: '4px 8px', height: 32 }} value={s.rank ?? ''} onChange={e => handleUpdateCompRecord(s.id, 'rank', parseInt(e.target.value) || 0)} />
+                                                                    <label style={{ fontSize: '0.8rem', fontWeight: 600, marginLeft: 8 }}>Category:</label>
+                                                                    <select className="form-input" style={{ width: 160, padding: '4px 8px', height: 32 }} value={s.category || ''} onChange={e => handleUpdateCompRecord(s.id, 'category', e.target.value)}>
+                                                                        <option value="">-- Select --</option>
+                                                                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                                                    </select>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div className="empty-state">
+                            <p>Standard selection for non-competition certificates is not fully implemented in this wizard yet.</p>
+                        </div>
+                    )}
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
+                        <button className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
+                        <button className="btn btn-primary" disabled={selectedStudents.size === 0} onClick={() => setStep(customVars.length > 0 ? 3 : 4)}>{customVars.length > 0 ? 'Next Step' : 'Generate Certificates'}</button>
+                    </div>
+                </div>
+            )}
+
+            {step === 3 && (
+                <div className="card" style={{ padding: 24 }}>
+                    <h3 style={{ margin: '0 0 16px 0', fontWeight: 700 }}>Custom Variables</h3>
+                    <p style={{ color: 'var(--color-text-muted)', marginBottom: 20 }}>Please provide values for the custom variables defined in this template.</p>
+                    
+                    {customVars.map(v => (
+                        <div key={v.varname} style={{ marginBottom: 16 }}>
+                            <label className="form-label">{v.varname}</label>
+                            <input type="text" className="form-input" value={customVarValues[v.varname] || ''} onChange={e => setCustomVarValues({ ...customVarValues, [v.varname]: e.target.value })} />
+                        </div>
+                    ))}
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
+                        <button className="btn btn-secondary" onClick={() => setStep(2)}>Back</button>
+                        <button className="btn btn-primary" onClick={startJob}>Generate Certificates</button>
+                    </div>
+                </div>
+            )}
+
+            {step === 4 && (
+                <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+                    <Icon name={jobStatus?.status === 'COMPLETED' ? "check-circle" : jobStatus?.status === 'FAILED' ? "x-circle" : "loader"} size={48} className={jobStatus?.status === 'COMPLETED' ? "text-success" : jobStatus?.status === 'FAILED' ? "text-danger" : "spin"} style={{ color: jobStatus?.status === 'COMPLETED' ? '#10b981' : jobStatus?.status === 'FAILED' ? '#ef4444' : 'var(--color-primary)' }} />
+                    <h2 style={{ marginTop: 24, marginBottom: 8 }}>{jobStatus?.status === 'COMPLETED' ? 'Certificates Generated Successfully' : jobStatus?.status === 'FAILED' ? 'Generation Failed' : 'Generating Certificates...'}</h2>
+                    
+                    {jobStatus ? (
+                        <div style={{ maxWidth: 400, margin: '0 auto', background: 'var(--color-bg)', borderRadius: 8, padding: 16, marginTop: 24 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                                <span>Progress</span>
+                                <span style={{ fontWeight: 700 }}>{jobStatus.completedCount} / {jobStatus.totalCount}</span>
+                            </div>
+                            <div className="progress-bar" style={{ height: 8, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', background: 'var(--color-primary)', width: `${(jobStatus.completedCount / jobStatus.totalCount) * 100}%`, transition: 'width 0.3s' }} />
+                            </div>
+                            {jobStatus.failedCount > 0 && <div style={{ color: '#ef4444', marginTop: 12, fontSize: '0.9rem' }}>{jobStatus.failedCount} failed records</div>}
+                        </div>
+                    ) : (
+                        <p style={{ color: 'var(--color-text-muted)' }}>Preparing batch...</p>
+                    )}
+
+                    {jobStatus?.status === 'COMPLETED' && (
+                        <div style={{ marginTop: 32 }}>
+                            {jobStatus.downloadUrl ? (
+                                <a href={jobStatus.downloadUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: '1.1rem' }}>
+                                    <Icon name="download" size={20} style={{ marginRight: 8 }} /> Download Certificates
+                                </a>
+                            ) : (
+                                <button className="btn btn-secondary" onClick={() => { setStep(0); }}>Return to List</button>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 
 const EmailCampaignPage = () => {
     const [step, setStep] = useState(0);
@@ -14314,7 +15105,7 @@ const EmailCampaignPage = () => {
         const selectedTemplate = templates.find(t => String(t.Id || t.id) === String(templateId));
         let customVars = [];
         if (selectedTemplate && selectedTemplate.customvar) {
-            try { customVars = JSON.parse(selectedTemplate.customvar); } catch (e) { }
+            try { customVars = JSON.parse(selectedTemplate.customvar); customVars = customVars.map(v => typeof v === 'string' ? { varname: v } : v); } catch (e) { }
         }
         for (const v of customVars) {
             if (!customVarValues[v.varname]) return alert(`Please enter a value for ${v.varname}`);
@@ -14591,7 +15382,7 @@ const EmailCampaignPage = () => {
                                 const selectedTemplate = templates.find(t => String(t.Id || t.id) === String(templateId));
                                 let customVars = [];
                                 if (selectedTemplate && selectedTemplate.customvar) {
-                                    try { customVars = JSON.parse(selectedTemplate.customvar); } catch (e) { }
+                                    try { customVars = JSON.parse(selectedTemplate.customvar); customVars = customVars.map(v => typeof v === 'string' ? { varname: v } : v); } catch (e) { }
                                 }
                                 for (const v of customVars) {
                                     if (!customVarValues[v.varname] || !customVarValues[v.varname].trim()) {
@@ -14627,7 +15418,7 @@ const EmailCampaignPage = () => {
                                 {(() => {
                                     const t = templates.find(t => String(t.Id || t.id) === String(templateId));
                                     let cv = [];
-                                    if (t && t.customvar) { try { cv = JSON.parse(t.customvar); } catch (e) { } }
+                                    if (t && t.customvar) { try { cv = JSON.parse(t.customvar); cv = cv.map(v => typeof v === 'string' ? { varname: v } : v); } catch (e) { } }
                                     if (cv.length === 0) return null;
                                     return (
                                         <div style={{ marginBottom: 24, padding: 24, background: '#f8fafc', border: '1px solid var(--color-border)', borderRadius: 8 }}>
@@ -17659,9 +18450,27 @@ const AppointmentsPage = () => {
 
 const App = () => {
     const [loggedIn, setLoggedIn] = useState(Auth.isLoggedIn());
+    const [sessionExpired, setSessionExpired] = useState(false);
+    const [sessionAuthenticated, setSessionAuthenticated] = useState(false);
+
+    useEffect(() => {
+        const handleStorageChange = (e) => {
+            if (e.key === 'jwt') {
+                if (!e.newValue && loggedIn) {
+                    setSessionExpired(true);
+                } else if (e.newValue && !loggedIn) {
+                    setSessionAuthenticated(true);
+                }
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, [loggedIn]);
 
     const handleLoginSuccess = () => {
         setLoggedIn(true);
+        setSessionExpired(false);
+        setSessionAuthenticated(false);
         navigate('/home');
     };
 
@@ -17669,15 +18478,50 @@ const App = () => {
         AppCache.purgeAll();
         Auth.clear();
         setLoggedIn(false);
+        setSessionExpired(false);
+        setSessionAuthenticated(false);
         window.location.hash = '';
     };
 
     if (!loggedIn) {
-        return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+        return (
+            <>
+                <LoginPage onLoginSuccess={handleLoginSuccess} />
+                {sessionAuthenticated && (
+                    <div className="modal-overlay" style={{ zIndex: 9999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div className="modal-box" style={{ textAlign: 'center', padding: '2rem', maxWidth: '400px' }}>
+                            <Icon name="check-circle" size={64} style={{ color: '#10b981', marginBottom: '16px' }} />
+                            <h2 className="modal-title" style={{ marginBottom: '16px', justifyContent: 'center', borderBottom: 'none' }}>Logged In</h2>
+                            <p style={{ margin: '0 0 24px 0', color: 'var(--color-text-muted, #475569)' }}>You have been logged in from another tab.</p>
+                            <button className="btn btn-primary" onClick={() => window.location.reload()} style={{ width: '100%', justifyContent: 'center' }}>
+                                Continue
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </>
+        );
     }
 
-    return <DashboardLayout onLogout={handleLogout} />;
+    return (
+        <>
+            <DashboardLayout onLogout={handleLogout} />
+            {sessionExpired && (
+                <div className="modal-overlay" style={{ zIndex: 9999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="modal-box" style={{ textAlign: 'center', padding: '2rem', maxWidth: '400px' }}>
+                        <Icon name="alert-triangle" size={64} style={{ color: '#eab308', marginBottom: '16px' }} />
+                        <h2 className="modal-title" style={{ marginBottom: '16px', justifyContent: 'center', borderBottom: 'none' }}>Session Expired</h2>
+                        <p style={{ margin: '0 0 24px 0', color: 'var(--color-text-muted, #475569)' }}>You have been logged out from another tab.</p>
+                        <button className="btn btn-primary" onClick={() => window.location.reload()} style={{ width: '100%', justifyContent: 'center' }}>
+                            Refresh Page
+                        </button>
+                    </div>
+                </div>
+            )}
+        </>
+    );
 };
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
+
