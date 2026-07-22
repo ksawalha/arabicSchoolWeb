@@ -11,7 +11,8 @@
   "license": "MIT",
   "dependencies": {
     "@azure/msal-browser": "^2.38.3",
-    "axios": "^1.7.2"
+    "axios": "^1.7.2",
+    "mssql": "^12.7.0"
   },
   "devDependencies": {
     "@babel/cli": "^8.0.4",

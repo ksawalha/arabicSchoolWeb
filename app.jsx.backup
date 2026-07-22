@@ -978,7 +978,7 @@ const navItems = [
     },
     {
         id: 'invoices-group',
-        label: 'Invoices',
+        label: 'Accounting',
         icon: 'file-text',
         subItems: [
             { id: '/payments', label: 'Payments Log', icon: 'dollar-sign' },
